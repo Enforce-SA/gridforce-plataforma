@@ -17,6 +17,32 @@ from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
+# Identidade visual: cores principais num só sítio para ajustar à marca Enforce
+BRAND = {"primary": "#00C2FF", "accent": "#7CFFB2", "bg": "#0A1220", "panel": "#121D33", "text": "#E6EDF7"}
+SERIES = ["#00C2FF", "#7CFFB2", "#FFB547", "#B78CFF", "#FF6B8B", "#4FD1C5", "#F6E05E", "#90CDF4"]
+px.defaults.template = "plotly_dark"
+px.defaults.color_discrete_sequence = SERIES
+
+st.markdown(f"""
+<style>
+  .stApp {{ background: radial-gradient(1200px 600px at 10% -10%, #10345A 0%, {BRAND['bg']} 55%); }}
+  h1 {{ background: linear-gradient(90deg, {BRAND['primary']}, {BRAND['accent']});
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: .5px; }}
+  [data-testid="stMetric"] {{ background: {BRAND['panel']}; border: 1px solid #1F3A5F; border-radius: 12px; padding: 14px 18px; }}
+  [data-testid="stMetricValue"] {{ color: {BRAND['primary']}; }}
+  .stTabs [aria-selected="true"] {{ color: {BRAND['primary']} !important; }}
+  .stButton > button[kind="primary"] {{ background: linear-gradient(90deg, {BRAND['primary']}, #0077FF); border: 0; color: #fff; font-weight: 600; }}
+</style>
+""", unsafe_allow_html=True)
+
+
+def _style(fig):
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", colorway=SERIES,
+                      font=dict(color=BRAND["text"]))
+    fig.update_xaxes(gridcolor="#1F3A5F")
+    fig.update_yaxes(gridcolor="#1F3A5F")
+    return fig
+
 st.title("GridForce")
 st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercado diário OMIE e serviços de sistema.")
 
@@ -163,7 +189,7 @@ with tab_res:
                         rows.append({"Variante": r.variant.name, "Fonte de valor": k, "EUR": delta})
             fig = px.bar(pd.DataFrame(rows), x="Variante", y="EUR", color="Fonte de valor", barmode="relative")
             fig.update_layout(legend=dict(orientation="h", y=-0.3), height=460, margin=dict(t=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(_style(fig), use_container_width=True)
         with c2:
             st.subheader("Cashflow descontado acumulado")
             fig = go.Figure()
@@ -173,7 +199,7 @@ with tab_res:
                 fig.add_trace(go.Scatter(x=cf.index, y=disc_cf.cumsum(), mode="lines", name=r.variant.name))
             fig.add_hline(y=0, line_dash="dot")
             fig.update_layout(height=460, margin=dict(t=10), yaxis_title="EUR", legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(_style(fig), use_container_width=True)
 
         st.subheader("Despacho num dia")
         c1, c2 = st.columns([1, 3])
@@ -185,18 +211,18 @@ with tab_res:
         with c2:
             d = r.dispatch_y1[r.dispatch_y1.index.date == day]
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=d.index, y=d.load, name="Consumo", line=dict(color="black")))
+            fig.add_trace(go.Scatter(x=d.index, y=d.load, name="Consumo", line=dict(color=BRAND["text"], width=2)))
             fig.add_trace(go.Bar(x=d.index, y=d.pv, name="PV usado"))
             fig.add_trace(go.Bar(x=d.index, y=d.dis - d.ch, name="Bateria (+descarga / -carga)"))
             fig.add_trace(go.Bar(x=d.index, y=d.imp - d.exp, name="Rede (+import / -export)"))
             if d.rup.sum() + d.rdn.sum() > 0:
                 fig.add_trace(go.Scatter(x=d.index, y=d.rup, name="Reserva aFRR subir", line=dict(dash="dot")))
             fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name="Preço OMIE (EUR/MWh)", yaxis="y2",
-                                     line=dict(color="orange")))
+                                     line=dict(color="#FFB547")))
             fig.update_layout(barmode="relative", height=420, margin=dict(t=10), yaxis_title="kW",
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
                               legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(_style(fig), use_container_width=True)
 
         st.subheader("Energia no 1.º ano")
         en = pd.DataFrame({"Base": res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})

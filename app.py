@@ -17,21 +17,25 @@ from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
-# Identidade visual: cores principais num só sítio para ajustar à marca Enforce
-BRAND = {"primary": "#00C2FF", "accent": "#7CFFB2", "bg": "#0A1220", "panel": "#121D33", "text": "#E6EDF7"}
-SERIES = ["#00C2FF", "#7CFFB2", "#FFB547", "#B78CFF", "#FF6B8B", "#4FD1C5", "#F6E05E", "#90CDF4"]
+# Identidade visual Enforce (Manual de Normas Gráficas, 02/07/2026):
+# verde principal #AEC000, verde médio #5C8831, verde escuro #2B4D22, preto #000000
+BRAND = {"primary": "#AEC000", "accent": "#5C8831", "dark": "#2B4D22", "bg": "#0B0F0A", "panel": "#151C13",
+         "text": "#EEF2EA", "grid": "#25311F"}
+SERIES = ["#AEC000", "#5C8831", "#E3EC8A", "#9AA79A", "#F2C14E", "#4FB3A5", "#D9DED5", "#E07A5F"]
 px.defaults.template = "plotly_dark"
 px.defaults.color_discrete_sequence = SERIES
 
 st.markdown(f"""
 <style>
-  .stApp {{ background: radial-gradient(1200px 600px at 10% -10%, #10345A 0%, {BRAND['bg']} 55%); }}
-  h1 {{ background: linear-gradient(90deg, {BRAND['primary']}, {BRAND['accent']});
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: .5px; }}
-  [data-testid="stMetric"] {{ background: {BRAND['panel']}; border: 1px solid #1F3A5F; border-radius: 12px; padding: 14px 18px; }}
+  .stApp {{ background: radial-gradient(1100px 520px at 0% -10%, {BRAND['dark']} 0%, {BRAND['bg']} 58%); }}
+  h1 {{ color: {BRAND['text']}; font-weight: 900; letter-spacing: .3px; }}
+  h1 span.gf {{ color: {BRAND['primary']}; }}
+  [data-testid="stMetric"] {{ background: {BRAND['panel']}; border: 1px solid {BRAND['dark']};
+        border-left: 4px solid {BRAND['primary']}; border-radius: 10px; padding: 14px 18px; }}
   [data-testid="stMetricValue"] {{ color: {BRAND['primary']}; }}
   .stTabs [aria-selected="true"] {{ color: {BRAND['primary']} !important; }}
-  .stButton > button[kind="primary"] {{ background: linear-gradient(90deg, {BRAND['primary']}, #0077FF); border: 0; color: #fff; font-weight: 600; }}
+  .stButton > button[kind="primary"], .stDownloadButton > button {{ background: {BRAND['primary']}; border: 0; color: #000; font-weight: 700; }}
+  .stButton > button[kind="primary"]:hover {{ background: {BRAND['accent']}; color: #fff; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -39,11 +43,16 @@ st.markdown(f"""
 def _style(fig):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", colorway=SERIES,
                       font=dict(color=BRAND["text"]))
-    fig.update_xaxes(gridcolor="#1F3A5F")
-    fig.update_yaxes(gridcolor="#1F3A5F")
+    fig.update_xaxes(gridcolor=BRAND["grid"])
+    fig.update_yaxes(gridcolor=BRAND["grid"])
     return fig
 
-st.title("GridForce")
+from pathlib import Path
+
+_logo = Path(__file__).parent / "assets" / "enforce_logo.png"
+if _logo.exists():
+    st.image(str(_logo), width=220)
+st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True)
 st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercado diário OMIE e serviços de sistema.")
 
 DEFAULT_VARIANTS = pd.DataFrame([
@@ -218,7 +227,7 @@ with tab_res:
             if d.rup.sum() + d.rdn.sum() > 0:
                 fig.add_trace(go.Scatter(x=d.index, y=d.rup, name="Reserva aFRR subir", line=dict(dash="dot")))
             fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name="Preço OMIE (EUR/MWh)", yaxis="y2",
-                                     line=dict(color="#FFB547")))
+                                     line=dict(color="#F2C14E")))
             fig.update_layout(barmode="relative", height=420, margin=dict(t=10), yaxis_title="kW",
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
                               legend=dict(orientation="h", y=-0.2))

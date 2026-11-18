@@ -1,0 +1,199 @@
+"""Modelo de projeto e execução de uma simulação completa (todas as variantes).
+
+É a camada que a interface web e os scripts usam: recebe a configuração do
+projeto, prepara as séries (preços, PV, consumo, tarifas), corre o despacho
+por variante e ano, e devolve métricas, cashflows e séries para gráficos.
+"""
+from __future__ import annotations
+
+import datetime as dt
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from .data.load import shopping_centre
+from .data.omie import day_ahead_prices
+from .data.pvgis import map_to_index, pv_profile_per_kwp
+from .dispatch import Battery, Markets, Site, simulate_year
+from .finance import annual_energy, annual_streams, investment_case
+from .tariffs import TAR_2026, contracted_power_cost, import_adder_eur_mwh
+
+CACHE = Path(__file__).resolve().parent.parent / "cache"
+
+
+@dataclass
+class Variant:
+    name: str
+    pv_kwp: float
+    bess_kwh: float
+    bess_kw: float
+
+
+@dataclass
+class ProjectConfig:
+    name: str = "Novo projeto"
+    lat: float = 38.96
+    lon: float = -9.33
+    # consumo
+    annual_load_mwh: float = 4666.4
+    load_kw: np.ndarray | None = None         # série medida de 15 min (opcional, 1 ano)
+    # ligação e tarifas
+    voltage_level: str | None = "MT"          # MAT, AT, MT, BTE ou None (sem tarifas de acesso)
+    import_limit_kw: float = 1e6
+    export_limit_kw: float = 1e6
+    extra_import_eur_mwh: float = 0.0         # margem do comercializador, CIEG, IEC...
+    export_fee_eur_mwh: float = 0.0
+    # PV
+    pv_tilt: float = 10.0
+    pv_azimuth: float = 180.0
+    pv_loss_pct: float = 14.0
+    pv_dc_ac_ratio: float = 1.2
+    pv_degradation_yr: float = 0.005
+    pv_capex_eur_kwp: float = 900.0
+    pv_opex_eur_kwp_yr: float = 0.0
+    # bateria
+    bess_rte: float = 0.88
+    bess_soc_min: float = 0.05
+    bess_soc_max: float = 0.95
+    bess_degradation_yr: float = 0.02
+    bess_wear_eur_mwh: float = 5.0
+    bess_capex_eur_kwh: float = 509.05
+    bess_opex_eur_kwh_yr: float = 0.0
+    # mercados
+    arbitrage: bool = True
+    afrr: bool = False
+    afrr_act_rate: float = 0.10
+    afrr_duration_h: float = 1.0
+    prices_start: dt.date = dt.date(2025, 10, 1)
+    prices_end: dt.date = dt.date(2026, 9, 30)
+    # financeiro
+    start_year: int = 2026
+    years: int = 16
+    discount_rate: float = 0.08
+    fast: bool = True                         # simula 1.º e último ano e interpola os restantes
+    variants: list[Variant] = field(default_factory=list)
+
+
+@dataclass
+class VariantResult:
+    variant: Variant
+    metrics: dict
+    yearly_streams: pd.DataFrame          # ano x fonte de valor (EUR)
+    cashflows: pd.Series                  # cashflow do projeto vs base (EUR)
+    energy_y1: dict
+    dispatch_y1: pd.DataFrame
+
+
+@dataclass
+class ProjectResult:
+    config: ProjectConfig
+    baseline_streams: dict
+    baseline_energy: dict
+    variants: list[VariantResult]
+
+
+def _inputs(cfg: ProjectConfig):
+    da = day_ahead_prices(cfg.prices_start, cfg.prices_end, cache_dir=CACHE)
+    idx = da.index
+    pv1 = map_to_index(pv_profile_per_kwp(cfg.lat, cfg.lon, cfg.pv_tilt, cfg.pv_azimuth,
+                                          loss_pct=cfg.pv_loss_pct, cache_dir=CACHE), idx)
+    if cfg.load_kw is not None:
+        load = np.resize(np.asarray(cfg.load_kw, dtype=float), len(idx))
+    else:
+        load = shopping_centre(idx, cfg.annual_load_mwh)
+    afrr = None
+    if cfg.afrr:
+        from .data.entsoe import afrr_prices
+        afrr = afrr_prices(idx, cache_dir=CACHE)
+    mkt = Markets(day_ahead=da.values,
+                  afrr_up_cap=None if afrr is None else afrr.up_cap.values,
+                  afrr_dn_cap=None if afrr is None else afrr.dn_cap.values,
+                  afrr_up_act_price=None if afrr is None else afrr.up_act.values,
+                  afrr_dn_act_price=None if afrr is None else afrr.dn_act.values,
+                  afrr_up_act_rate=cfg.afrr_act_rate, afrr_dn_act_rate=cfg.afrr_act_rate,
+                  reserve_duration_h=cfg.afrr_duration_h,
+                  enable_afrr=afrr is not None, enable_arbitrage=cfg.arbitrage)
+    tar = TAR_2026.get(cfg.voltage_level) if cfg.voltage_level else None
+    adder = (import_adder_eur_mwh(idx, tar) if tar else np.zeros(len(idx))) + cfg.extra_import_eur_mwh
+    site = Site(import_limit_kw=cfg.import_limit_kw, export_limit_kw=cfg.export_limit_kw,
+                import_adder_eur_mwh=adder, export_fee_eur_mwh=cfg.export_fee_eur_mwh)
+    return idx, pv1, load, mkt, site, tar
+
+
+def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
+    idx, pv1, load, mkt, site, tar = _inputs(cfg)
+
+    def streams(df):
+        st = annual_streams(df, export_fee=cfg.export_fee_eur_mwh,
+                            act_up=mkt.afrr_up_act_rate, act_dn=mkt.afrr_dn_act_rate)
+        st["Tarifas de acesso - potência contratada"] = -contracted_power_cost(df.imp.values, tar) if tar else 0.0
+        return st
+
+    base = simulate_year(idx, load, np.zeros_like(load), mkt, None, site)
+    base_st = streams(base.df)
+    base_net = sum(base_st.values())
+
+    results = []
+    total_steps = len(cfg.variants) * (2 if cfg.fast else cfg.years)
+    done = 0
+    for v in cfg.variants:
+        sim_years = [0, cfg.years - 1] if cfg.fast and cfg.years > 1 else list(range(cfg.years))
+        per_year, d1 = {}, None
+        for y in sim_years:
+            pv = np.minimum(pv1 * v.pv_kwp * (1 - cfg.pv_degradation_yr) ** y, v.pv_kwp / cfg.pv_dc_ac_ratio)
+            bat = None
+            if v.bess_kwh > 0 and v.bess_kw > 0:
+                bat = Battery(v.bess_kwh * (1 - cfg.bess_degradation_yr) ** y, v.bess_kw, rte=cfg.bess_rte,
+                              soc_min=cfg.bess_soc_min, soc_max=cfg.bess_soc_max,
+                              degradation_eur_mwh=cfg.bess_wear_eur_mwh)
+            res = simulate_year(idx, load, pv, mkt, bat, site)
+            per_year[y] = streams(res.df)
+            if y == 0:
+                d1 = res.df
+            done += 1
+            if progress:
+                progress(done / total_steps, f"{v.name}: ano {cfg.start_year + y}")
+        ys = pd.DataFrame(per_year).T.sort_index()
+        ys = ys.reindex(range(cfg.years)).interpolate(method="index")
+        ys.index = [cfg.start_year + i for i in ys.index]
+        net_vs_base = (ys.sum(axis=1) - base_net).tolist()
+        capex = v.pv_kwp * cfg.pv_capex_eur_kwp + v.bess_kwh * cfg.bess_capex_eur_kwh
+        opex = v.pv_kwp * cfg.pv_opex_eur_kwp_yr + v.bess_kwh * cfg.bess_opex_eur_kwh_yr
+        ic = investment_case(net_vs_base, capex, opex, cfg.discount_rate, cfg.start_year)
+        e1 = annual_energy(d1)
+        metrics = {
+            "Variante": v.name, "PV (kWp)": v.pv_kwp, "BESS (kWh)": v.bess_kwh, "BESS (kW)": v.bess_kw,
+            "Capex (EUR)": capex, "Opex (EUR/ano)": opex, "VAL (EUR)": ic["npv"], "TIR": ic["irr"],
+            "Payback (anos)": ic["payback_years"], "Poupança 1.º ano (EUR)": net_vs_base[0],
+            "Autoconsumo PV (%)": 100 * (e1["PV usado (MWh)"] - e1["Exportação (MWh)"]) / max(e1["PV disponível (MWh)"], 1e-9)
+            if v.pv_kwp else None,
+            "Importação 1.º ano (MWh)": e1["Importação (MWh)"],
+        }
+        results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1))
+    return ProjectResult(cfg, base_st, annual_energy(base.df), results)
+
+
+def to_excel(res: ProjectResult, path_or_buffer) -> None:
+    cfg = asdict(res.config)
+    cfg.pop("load_kw", None)
+    cfg["variants"] = ", ".join(v.name for v in res.config.variants)
+    with pd.ExcelWriter(path_or_buffer) as xw:
+        pd.Series(cfg, name="Valor").to_frame().to_excel(xw, sheet_name="Pressupostos")
+        pd.DataFrame([r.metrics for r in res.variants]).to_excel(xw, sheet_name="Resumo", index=False)
+        rows = []
+        for r in res.variants:
+            for y, s in r.yearly_streams.iterrows():
+                for k, val in s.items():
+                    rows.append({"Variante": r.variant.name, "Ano": y, "Fonte de valor": k, "EUR": val})
+        for k, val in res.baseline_streams.items():
+            rows.append({"Variante": "Base (sem ativos)", "Ano": res.config.start_year, "Fonte de valor": k, "EUR": val})
+        pd.DataFrame(rows).to_excel(xw, sheet_name="Cashflows por fonte", index=False)
+        pd.DataFrame({r.variant.name: r.cashflows for r in res.variants}).to_excel(xw, sheet_name="Cashflows projeto")
+        pd.DataFrame({"Base": res.baseline_energy, **{r.variant.name: r.energy_y1 for r in res.variants}}).to_excel(
+            xw, sheet_name="Energia 1.º ano")
+        for r in res.variants:
+            d = r.dispatch_y1.copy()
+            d.index = d.index.tz_localize(None)
+            d.to_excel(xw, sheet_name=f"Despacho {r.variant.name}"[:31])

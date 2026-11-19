@@ -22,16 +22,18 @@ import gridforce.project
 import gridforce.presets
 import gridforce.sensitivity
 import gridforce.library
+import gridforce.i18n
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
 # pode manter a versão antiga dos módulos em memória.
 for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets,
-           gridforce.sensitivity, gridforce.library):
+           gridforce.sensitivity, gridforce.library, gridforce.i18n):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 from gridforce import sensitivity as sens
 from gridforce import library as lib
+from gridforce.i18n import T, TD, TF, TP, set_lang, translate_xlsx
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
@@ -67,11 +69,21 @@ def _style(fig):
 
 from pathlib import Path
 
+_LANGS = {"pt": "Português", "en": "English"}
+_lang0 = st.query_params.get("lang", "pt")
+_c_logo, _c_lang = st.columns([5, 1])
+with _c_lang:
+    _lang = st.radio("Língua / Language", list(_LANGS), index=list(_LANGS).index(_lang0) if _lang0 in _LANGS else 0,
+                     format_func=_LANGS.get, horizontal=True, label_visibility="collapsed", key="lang")
+set_lang(_lang)
+if st.query_params.get("lang") != _lang:
+    st.query_params["lang"] = _lang
 _logo = Path(__file__).parent / "assets" / "enforce_logo.png"
 if _logo.exists():
-    st.image(str(_logo), width=220)
+    with _c_logo:
+        st.image(str(_logo), width=220)
 st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True)
-st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR).")
+st.caption(T("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR)."))
 
 DEFAULT_VARIANTS = pd.DataFrame([
     {"Variante": "PV 700 kW + 2 MWh", "PV (kWp)": 700, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
@@ -85,29 +97,29 @@ LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CS
 LEVELS = ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"]
 SALES = ["Mercado diário OMIE", "Preço fixo (PPA)"]
 
-with st.expander("Biblioteca de projetos", expanded=False):
+with st.expander(T("Biblioteca de projetos"), expanded=False):
     if lib.is_shared():
-        st.caption("Projetos guardados e partilhados com a equipa. Não se perdem ao atualizar a página.")
+        st.caption(T("Projetos guardados e partilhados com a equipa. Não se perdem ao atualizar a página."))
     else:
-        st.warning("A biblioteca partilhada ainda não está ligada: os projetos guardados aqui só duram até "
-                   "a aplicação reiniciar.")
+        st.warning(T("A biblioteca partilhada ainda não está ligada: os projetos guardados aqui só duram até "
+                   "a aplicação reiniciar."))
     loaded = {}
     try:
         lib_files = lib.list_projects()
     except Exception as e:  # noqa: BLE001
         lib_files = []
-        st.error(f"Não foi possível ler a biblioteca: {e}")
+        st.error(T("Não foi possível ler a biblioteca: {e}").format(e=e))
     _d = lib.days_to_expiry()
     if _d is not None and _d <= 30:
-        st.warning(f"A chave de acesso à biblioteca expira dentro de {_d} dias. Crie uma nova no GitHub "
-                   "(GridForce biblioteca, Regenerate token) e atualize-a nos Secrets do Streamlit.")
+        st.warning(T("A chave de acesso à biblioteca expira dentro de {d} dias. Crie uma nova no GitHub "
+                     "(GridForce biblioteca, Regenerate token) e atualize-a nos Secrets do Streamlit.").format(d=_d))
     c1, c2 = st.columns([3, 1])
     with c1:
-        sel = st.multiselect("Projetos da biblioteca a abrir", lib_files, key="lib_sel",
+        sel = st.multiselect(T("Projetos da biblioteca a abrir"), lib_files, key="lib_sel",
                              format_func=lambda x: x[:-5].replace("_", " "))
     with c2:
-        st.write("")
-        if lib_files and st.button("Selecionar todos"):
+        st.write(T(""))
+        if lib_files and st.button(T("Selecionar todos")):
             st.session_state["lib_sel"] = lib_files
             st.rerun()
     for fn in sel:
@@ -115,8 +127,8 @@ with st.expander("Biblioteca de projetos", expanded=False):
             d = lib.load_project(fn)
             loaded[d.get("Nome do projeto", fn[:-5])] = (d, f"lib_{fn}")
         except Exception as e:  # noqa: BLE001
-            st.error(f"{fn}: não foi possível abrir ({e})")
-    ups = st.file_uploader("Ou carregar ficheiros de projeto (.json) do computador", type=["json"],
+            st.error(T("{fn}: não foi possível abrir ({e})").format(fn=fn, e=e))
+    ups = st.file_uploader(T("Ou carregar ficheiros de projeto (.json) do computador"), type=["json"],
                            key="preset_files", accept_multiple_files=True)
     up_dicts = []
     for u in ups or []:
@@ -125,39 +137,39 @@ with st.expander("Biblioteca de projetos", expanded=False):
             up_dicts.append(d)
             loaded[d.get("Nome do projeto", u.name)] = (d, getattr(u, "file_id", u.name))
         except Exception as e:  # noqa: BLE001
-            st.error(f"{u.name}: ficheiro inválido ({e})")
-    if up_dicts and st.button(f"Guardar {len(up_dicts)} ficheiro(s) carregado(s) na biblioteca"):
+            st.error(T("{fn}: ficheiro inválido ({e})").format(fn=u.name, e=e))
+    if up_dicts and st.button(T("Guardar {n} ficheiro(s) carregado(s) na biblioteca").format(n=len(up_dicts))):
         try:
             for d in up_dicts:
                 lib.save_project(d)
-            st.success("Guardado na biblioteca.")
+            st.success(T("Guardado na biblioteca."))
             st.rerun()
         except Exception as e:  # noqa: BLE001
-            st.error(f"Não foi possível guardar: {e}")
+            st.error(T("Não foi possível guardar: {e}").format(e=e))
     if sel:
-        with st.popover("Apagar da biblioteca"):
-            st.write("Apaga os projetos selecionados acima. Não se pode desfazer.")
-            if st.button(f"Apagar {len(sel)} projeto(s)", type="primary"):
+        with st.popover(T("Apagar da biblioteca")):
+            st.write(T("Apaga os projetos selecionados acima. Não se pode desfazer."))
+            if st.button(T("Apagar {n} projeto(s)").format(n=len(sel)), type="primary"):
                 for fn in sel:
                     lib.delete_project(fn)
                 st.session_state["lib_sel"] = []
                 st.rerun()
     if loaded:
-        pick = st.selectbox("Projeto a mostrar nos separadores", list(loaded), key="preset_pick")
+        pick = st.selectbox(T("Projeto a mostrar nos separadores"), list(loaded), key="preset_pick")
         st.session_state["preset"], st.session_state["preset_id"] = loaded[pick][0], f"{loaded[pick][1]}_{pick}"
-        st.success(f"{len(loaded)} projeto(s) carregado(s). Os separadores mostram: {pick}.")
-        if len(loaded) > 1 and st.button(f"Correr os {len(loaded)} projetos", type="primary"):
-            bar = st.progress(0.0, "A preparar...")
+        st.success(T("{n} projeto(s) carregado(s). Os separadores mostram: {p}.").format(n=len(loaded), p=pick))
+        if len(loaded) > 1 and st.button(T("Correr os {n} projetos").format(n=len(loaded)), type="primary"):
+            bar = st.progress(0.0, T("A preparar..."))
             out = []
             for i, (nm, (d, _)) in enumerate(loaded.items()):
                 try:
                     out.append(run_project(config_from_dict(d), progress=lambda f, t, i=i, nm=nm: bar.progress(
-                        (i + f) / len(loaded), f"{nm}: {t}")))
+                        (i + f) / len(loaded), f"{nm}: {TP(t)}")))
                 except Exception as e:  # noqa: BLE001
-                    st.error(f"{nm}: a simulação falhou ({e})")
-            bar.progress(1.0, "Concluído")
+                    st.error(T("{nm}: a simulação falhou ({e})").format(nm=nm, e=e))
+            bar.progress(1.0, T("Concluído"))
             st.session_state["portfolio"] = out
-            st.info("Resultados no separador 5.")
+            st.info(T("Resultados no separador 5."))
 PRESET = st.session_state.get("preset", {})
 PRESET_ID = st.session_state.get("preset_id", "base")
 
@@ -189,27 +201,27 @@ def _variants_default():
 
 
 tab_site, tab_tech, tab_mkt, tab_var, tab_res = st.tabs(
-    ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"])
+    [T(x) for x in ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"]])
 
 with tab_site:
     c1, c2 = st.columns(2)
     with c1:
-        name = st.text_input("Nome do projeto", P("Nome do projeto", "Shopping Centre"))
-        lat = st.number_input("Latitude", value=P("Latitude", 38.96), format="%.4f")
-        lon = st.number_input("Longitude", value=P("Longitude", -9.33), format="%.4f")
+        name = st.text_input(T("Nome do projeto"), P("Nome do projeto", "Shopping Centre"))
+        lat = st.number_input(T("Latitude"), value=P("Latitude", 38.96), format="%.4f")
+        lon = st.number_input(T("Longitude"), value=P("Longitude", -9.33), format="%.4f")
     with c2:
-        load_mode = st.radio("Consumo do local", LOAD_MODES, index=LOAD_MODES.index(P("Consumo do local", LOAD_MODES[0])))
+        load_mode = st.radio(T("Consumo do local"), LOAD_MODES, format_func=T, index=LOAD_MODES.index(P("Consumo do local", LOAD_MODES[0])))
         load_kw = None
-        annual = st.number_input("Consumo anual (MWh)", value=P("Consumo anual (MWh)", 4666.4), min_value=0.0,
+        annual = st.number_input(T("Consumo anual (MWh)"), value=P("Consumo anual (MWh)", 4666.4), min_value=0.0,
                                  disabled=load_mode != "Perfil tipo de centro comercial")
         if load_mode.startswith("Sem consumo"):
             annual = 0.0
         elif load_mode != "Perfil tipo de centro comercial":
-            f = st.file_uploader("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)",
+            f = st.file_uploader(T("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)"),
                                  type=["csv"])
             if f is None and PRESET.get("Diagrama de carga (kW)"):
                 load_kw = np.asarray(PRESET["Diagrama de carga (kW)"], dtype=float)
-                st.info(f"A usar o diagrama de carga guardado no projeto ({load_kw.sum() * 0.25 / 1000:,.1f} MWh/ano).")
+                st.info(T("A usar o diagrama de carga guardado no projeto ({x} MWh/ano).").format(x=f"{load_kw.sum() * 0.25 / 1000:,.1f}"))
             if f is not None:
                 raw = pd.read_csv(f, sep=None, engine="python")
                 col = raw.select_dtypes("number").columns[-1]
@@ -217,141 +229,143 @@ with tab_site:
                 if len(vals) in (8760, 8784):
                     vals = np.repeat(vals, 4)
                 load_kw = vals
-                st.success(f"{len(vals):,} intervalos, {vals.sum() * 0.25 / 1000:,.1f} MWh/ano, ponta {vals.max():,.0f} kW")
+                st.success(T("{n} intervalos, {e} MWh/ano, ponta {p} kW").format(n=f"{len(vals):,}", e=f"{vals.sum() * 0.25 / 1000:,.1f}", p=f"{vals.max():,.0f}"))
     c3, c4 = st.columns(2)
     with c3:
-        imp_lim = st.number_input("Limite de importação (kW, 0 = sem limite)", value=P("Limite de importação (kW, 0 = sem limite)", 0.0), min_value=0.0)
+        imp_lim = st.number_input(T("Limite de importação (kW, 0 = sem limite)"), value=P("Limite de importação (kW, 0 = sem limite)", 0.0), min_value=0.0)
     with c4:
-        exp_lim = st.number_input("Limite de injeção na rede (kW, 0 = sem limite)", value=P("Limite de injeção na rede (kW, 0 = sem limite)", 0.0), min_value=0.0)
+        exp_lim = st.number_input(T("Limite de injeção na rede (kW, 0 = sem limite)"), value=P("Limite de injeção na rede (kW, 0 = sem limite)", 0.0), min_value=0.0)
 
 with tab_tech:
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("PV")
-        tilt = st.number_input("Inclinação (°)", value=P("Inclinação (°)", 10.0))
-        az = st.number_input("Azimute (°, 180 = sul)", value=P("Azimute (°, 180 = sul)", 180.0))
-        loss = st.number_input("Perdas do sistema (%)", value=P("Perdas do sistema (%)", 14.0))
-        dcac = st.number_input("Rácio DC/AC do inversor", value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
-        pv_deg = st.number_input("Degradação anual (%)", value=P("Degradação anual (%)", 0.5)) / 100
-        pv_capex = st.number_input("Capex PV (EUR/kWp)", value=P("Capex PV (EUR/kWp)", 900.0))
-        pv_opex = st.number_input("Opex PV (EUR/kWp/ano)", value=P("Opex PV (EUR/kWp/ano)", 0.0))
+        st.subheader(T("PV"))
+        tilt = st.number_input(T("Inclinação (°)"), value=P("Inclinação (°)", 10.0))
+        az = st.number_input(T("Azimute (°, 180 = sul)"), value=P("Azimute (°, 180 = sul)", 180.0))
+        loss = st.number_input(T("Perdas do sistema (%)"), value=P("Perdas do sistema (%)", 14.0))
+        dcac = st.number_input(T("Rácio DC/AC do inversor"), value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
+        pv_deg = st.number_input(T("Degradação anual (%)"), value=P("Degradação anual (%)", 0.5)) / 100
+        pv_capex = st.number_input(T("Capex PV (EUR/kWp)"), value=P("Capex PV (EUR/kWp)", 900.0))
+        pv_opex = st.number_input(T("Opex PV (EUR/kWp/ano)"), value=P("Opex PV (EUR/kWp/ano)", 0.0))
     with c2:
-        st.subheader("Bateria")
-        rte = st.number_input("Eficiência round-trip (%)", value=P("Eficiência round-trip (%)", 88.0)) / 100
-        soc_min, soc_max = st.slider("Janela de SOC (%)", 0, 100, tuple(P("Janela de SOC (%)", (5, 95))))
-        b_deg = st.number_input("Perda de capacidade anual (%)", value=P("Perda de capacidade anual (%)", 2.0)) / 100
-        wear = st.number_input("Custo de desgaste (EUR/MWh descarregado)", value=P("Custo de desgaste (EUR/MWh descarregado)", 5.0))
-        max_cyc = st.number_input("Máximo de ciclos por dia (0 = sem limite)", value=P("Máximo de ciclos por dia (0 = sem limite)", 2.0),
-                                  min_value=0.0, help="Média por semana, contando também a energia das ativações aFRR/mFRR. "
-                                                      "Garantias típicas: 1 a 2 ciclos por dia.")
-        b_capex = st.number_input("Capex bateria (EUR/kWh)", value=P("Capex bateria (EUR/kWh)", 509.05))
-        b_opex = st.number_input("Opex bateria (EUR/kWh/ano)", value=P("Opex bateria (EUR/kWh/ano)", 0.0))
-        with st.expander("Mais parâmetros da bateria"):
-            eta_c = st.number_input("Eficiência de carga (%, 0 = usar a round-trip)", value=P("Eficiência de carga (%)", 0.0),
+        st.subheader(T("Bateria"))
+        rte = st.number_input(T("Eficiência round-trip (%)"), value=P("Eficiência round-trip (%)", 88.0)) / 100
+        soc_min, soc_max = st.slider(T("Janela de SOC (%)"), 0, 100, tuple(P("Janela de SOC (%)", (5, 95))))
+        b_deg = st.number_input(T("Perda de capacidade anual (%)"), value=P("Perda de capacidade anual (%)", 2.0)) / 100
+        wear = st.number_input(T("Custo de desgaste (EUR/MWh descarregado)"), value=P("Custo de desgaste (EUR/MWh descarregado)", 5.0))
+        max_cyc = st.number_input(T("Máximo de ciclos por dia (0 = sem limite)"), value=P("Máximo de ciclos por dia (0 = sem limite)", 2.0),
+                                  min_value=0.0, help=T("Média por semana, contando também a energia das ativações aFRR/mFRR. "
+                                                      "Garantias típicas: 1 a 2 ciclos por dia."))
+        b_capex = st.number_input(T("Capex bateria (EUR/kWh)"), value=P("Capex bateria (EUR/kWh)", 509.05))
+        b_opex = st.number_input(T("Opex bateria (EUR/kWh/ano)"), value=P("Opex bateria (EUR/kWh/ano)", 0.0))
+        with st.expander(T("Mais parâmetros da bateria")):
+            eta_c = st.number_input(T("Eficiência de carga (%, 0 = usar a round-trip)"), value=P("Eficiência de carga (%)", 0.0),
                                     min_value=0.0, max_value=100.0) / 100
-            eta_d = st.number_input("Eficiência de descarga (%, 0 = usar a round-trip)", value=P("Eficiência de descarga (%)", 0.0),
+            eta_d = st.number_input(T("Eficiência de descarga (%, 0 = usar a round-trip)"), value=P("Eficiência de descarga (%)", 0.0),
                                     min_value=0.0, max_value=100.0) / 100
-            avail = st.number_input("Disponibilidade técnica (%)", value=P("Disponibilidade técnica (%)", 100.0),
+            avail = st.number_input(T("Disponibilidade técnica (%)"), value=P("Disponibilidade técnica (%)", 100.0),
                                     min_value=0.0, max_value=100.0) / 100
-            aux = st.number_input("Consumos auxiliares (kW por MW de bateria)", value=P("Consumos auxiliares (kW por MW)", 0.0),
-                                  min_value=0.0, help="AVAC, controlo, transformador. Típico: 5 a 15 kW/MW.")
-        with st.expander("Degradação, fim de vida e substituições"):
+            aux = st.number_input(T("Consumos auxiliares (kW por MW de bateria)"), value=P("Consumos auxiliares (kW por MW)", 0.0),
+                                  min_value=0.0, help=T("AVAC, controlo, transformador. Típico: 5 a 15 kW/MW."))
+        with st.expander(T("Degradação, fim de vida e substituições")):
             DEG = ["Linear (% por ano)", "Por ciclos e calendário"]
-            deg_mode = st.radio("Modelo de degradação", DEG, index=DEG.index(P("Modelo de degradação", DEG[0])),
-                                help="Linear usa a 'Perda de capacidade anual'. Por ciclos soma a perda de calendário "
-                                     "e a perda por ciclo equivalente, com os ciclos que a simulação faz.")
-            cal = st.number_input("Perda por calendário (%/ano)", value=P("Perda por calendário (%/ano)", 1.0),
+            deg_mode = st.radio(T("Modelo de degradação"), DEG, format_func=T, index=DEG.index(P("Modelo de degradação", DEG[0])),
+                                help=T("Linear usa a 'Perda de capacidade anual'. Por ciclos soma a perda de calendário "
+                                     "e a perda por ciclo equivalente, com os ciclos que a simulação faz."))
+            cal = st.number_input(T("Perda por calendário (%/ano)"), value=P("Perda por calendário (%/ano)", 1.0),
                                   disabled=deg_mode == DEG[0]) / 100
-            cyc = st.number_input("Perda por ciclo equivalente (%)", value=P("Perda por ciclo equivalente (%)", 0.0033),
+            cyc = st.number_input(T("Perda por ciclo equivalente (%)"), value=P("Perda por ciclo equivalente (%)", 0.0033),
                                   format="%.4f", disabled=deg_mode == DEG[0]) / 100
-            eol = st.number_input("Fim de vida (% da capacidade inicial)", value=P("Fim de vida (%)", 70.0),
+            eol = st.number_input(T("Fim de vida (% da capacidade inicial)"), value=P("Fim de vida (%)", 70.0),
                                   disabled=deg_mode == DEG[0]) / 100
-            aug = st.checkbox("Repor capacidade no fim de vida (augmentation)", P("Augmentation", False),
+            aug = st.checkbox(T("Repor capacidade no fim de vida (augmentation)"), P("Augmentation", False),
                               disabled=deg_mode == DEG[0])
-            aug_cost = st.number_input("Custo da reposição (EUR por kWh reposto)", value=P("Custo da reposição (EUR/kWh)", 150.0),
+            aug_cost = st.number_input(T("Custo da reposição (EUR por kWh reposto)"), value=P("Custo da reposição (EUR/kWh)", 150.0),
                                        disabled=not aug or deg_mode == DEG[0])
-            pcs_y = st.number_input("Ano de substituição do PCS (0 = não)", value=P("Ano de substituição do PCS", 0), step=1,
+            pcs_y = st.number_input(T("Ano de substituição do PCS (0 = não)"), value=P("Ano de substituição do PCS", 0), step=1,
                                     min_value=0)
-            pcs_c = st.number_input("Custo da substituição do PCS (EUR/kW)", value=P("Custo da substituição do PCS (EUR/kW)", 0.0))
+            pcs_c = st.number_input(T("Custo da substituição do PCS (EUR/kW)"), value=P("Custo da substituição do PCS (EUR/kW)", 0.0))
 
 with tab_mkt:
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.subheader("Mercados")
-        p_end = st.date_input("Preços OMIE: últimos 12 meses até", dt.date.fromisoformat(P("Preços OMIE: últimos 12 meses até", "2026-09-30")))
-        arbitrage = st.checkbox("Arbitragem no mercado diário (carregar da rede para vender)", P("Arbitragem", True))
-        afrr = st.checkbox("Banda de regulação secundária (aFRR)", P("aFRR", False),
-                           help="Precisa da chave ENTSO-E (variável ENTSOE_TOKEN).")
-        act = st.number_input("Taxa de ativação aFRR (%)", value=P("Taxa de ativação aFRR (%)", 10.0)) / 100
-        dur = st.number_input("Duração mínima da reserva (h)", value=P("Duração mínima da reserva (h)", 1.0))
-        acc = st.number_input("Ofertas aceites (%)", value=P("Ofertas aceites (%)", 100.0), min_value=0.0, max_value=100.0,
-                              help="Percentagem das horas em que a oferta de reserva é aceite. A GridCog usa 50%.") / 100
-        cap_scale = st.number_input("Ajuste dos preços de capacidade aFRR (%)",
+        st.subheader(T("Mercados"))
+        p_end = st.date_input(T("Preços OMIE: últimos 12 meses até"), dt.date.fromisoformat(P("Preços OMIE: últimos 12 meses até", "2026-09-30")))
+        arbitrage = st.checkbox(T("Arbitragem no mercado diário (carregar da rede para vender)"), P("Arbitragem", True))
+        afrr = st.checkbox(T("Banda de regulação secundária (aFRR)"), P("aFRR", False),
+                           help=T("Precisa da chave ENTSO-E (variável ENTSOE_TOKEN)."))
+        act = st.number_input(T("Taxa de ativação aFRR (%)"), value=P("Taxa de ativação aFRR (%)", 10.0)) / 100
+        dur = st.number_input(T("Duração mínima da reserva (h)"), value=P("Duração mínima da reserva (h)", 1.0))
+        acc = st.number_input(T("Ofertas aceites (%)"), value=P("Ofertas aceites (%)", 100.0), min_value=0.0, max_value=100.0,
+                              help=T("Percentagem das horas em que a oferta de reserva é aceite. A GridCog usa 50%.")) / 100
+        cap_scale = st.number_input(T("Ajuste dos preços de capacidade aFRR (%)"),
                                     value=P("Ajuste dos preços de capacidade aFRR (%)", 100.0), min_value=0.0,
-                                    help="100% = preços da ENTSO-E dos últimos 12 meses. Ex.: 300% para usar preços 3 vezes maiores.") / 100
-        intra = st.checkbox("Mercado intradiário contínuo", P("Intradiário", False),
-                            help="A bateria compra e vende ao melhor preço entre o diário e o intradiário (OMIE).")
-        capt = st.number_input("Vantagem do intradiário capturada (%)", value=P("Vantagem do intradiário capturada (%)", 25.0),
+                                    help=T("100% = preços da ENTSO-E dos últimos 12 meses. Ex.: 300% para usar preços 3 vezes maiores.")) / 100
+        intra = st.checkbox(T("Mercado intradiário contínuo"), P("Intradiário", False),
+                            help=T("A bateria compra e vende ao melhor preço entre o diário e o intradiário (OMIE)."))
+        capt = st.number_input(T("Vantagem do intradiário capturada (%)"), value=P("Vantagem do intradiário capturada (%)", 25.0),
                                min_value=0.0, max_value=100.0, disabled=not intra,
-                               help="Com previsão perfeita, escolher sempre o melhor mercado sobrestima o ganho.") / 100
-        mfrr = st.checkbox("Reserva de substituição manual (mFRR)", P("mFRR", False),
-                           help="Só energia ativada, a preços da ENTSO-E. Precisa da chave ENTSOE_TOKEN.")
-        m_up = st.number_input("Ativação mFRR a subir (%)", value=P("Ativação mFRR a subir (%)", 40.0), disabled=not mfrr) / 100
-        m_dn = st.number_input("Ativação mFRR a descer (%)", value=P("Ativação mFRR a descer (%)", 49.0), disabled=not mfrr) / 100
+                               help=T("Com previsão perfeita, escolher sempre o melhor mercado sobrestima o ganho.")) / 100
+        mfrr = st.checkbox(T("Reserva de substituição manual (mFRR)"), P("mFRR", False),
+                           help=T("Só energia ativada, a preços da ENTSO-E. Precisa da chave ENTSOE_TOKEN."))
+        m_up = st.number_input(T("Ativação mFRR a subir (%)"), value=P("Ativação mFRR a subir (%)", 40.0), disabled=not mfrr) / 100
+        m_dn = st.number_input(T("Ativação mFRR a descer (%)"), value=P("Ativação mFRR a descer (%)", 49.0), disabled=not mfrr) / 100
     with c2:
-        st.subheader("Tarifas")
-        lvl = st.selectbox("Nível de tensão (tarifa de acesso ERSE)", LEVELS, index=LEVELS.index(P("Nível de tensão", "MT")))
-        extra = st.number_input("Outros custos na compra (EUR/MWh)", value=P("Outros custos na compra (EUR/MWh)", 0.0),
-                                help="Margem do comercializador, CIEG, imposto especial de consumo, etc.")
-        fee = st.number_input("Comissão na venda (EUR/MWh)", value=P("Comissão na venda (EUR/MWh)", 0.0))
-        sale = st.radio("Venda da energia PV injetada", SALES, index=SALES.index(P("Venda da energia PV injetada", SALES[0])),
-                        help="Com preço fixo, a energia PV injetada diretamente é paga a esse preço; a bateria "
-                             "continua a vender no mercado.")
-        ppa = st.number_input("Preço fixo no 1.º ano (EUR/MWh)", value=P("Preço fixo no 1.º ano (EUR/MWh)", 45.9), disabled=sale != "Preço fixo (PPA)")
-        ppa_esc = st.number_input("Aumento anual do preço fixo (EUR/MWh por ano)", value=P("Aumento anual do preço fixo (EUR/MWh por ano)", 0.9),
+        st.subheader(T("Tarifas"))
+        lvl = st.selectbox(T("Nível de tensão (tarifa de acesso ERSE)"), LEVELS, format_func=T, index=LEVELS.index(P("Nível de tensão", "MT")))
+        extra = st.number_input(T("Outros custos na compra (EUR/MWh)"), value=P("Outros custos na compra (EUR/MWh)", 0.0),
+                                help=T("Margem do comercializador, CIEG, imposto especial de consumo, etc."))
+        fee = st.number_input(T("Comissão na venda (EUR/MWh)"), value=P("Comissão na venda (EUR/MWh)", 0.0))
+        sale = st.radio(T("Venda da energia PV injetada"), SALES, format_func=T, index=SALES.index(P("Venda da energia PV injetada", SALES[0])),
+                        help=T("Com preço fixo, a energia PV injetada diretamente é paga a esse preço; a bateria "
+                             "continua a vender no mercado."))
+        ppa = st.number_input(T("Preço fixo no 1.º ano (EUR/MWh)"), value=P("Preço fixo no 1.º ano (EUR/MWh)", 45.9), disabled=sale != "Preço fixo (PPA)")
+        ppa_esc = st.number_input(T("Aumento anual do preço fixo (EUR/MWh por ano)"), value=P("Aumento anual do preço fixo (EUR/MWh por ano)", 0.9),
                                   disabled=sale != "Preço fixo (PPA)")
     with c3:
-        st.subheader("Finanças")
-        start_year = st.number_input("Ano de início", value=P("Ano de início", 2026), step=1)
-        years = st.number_input("Duração (anos)", value=P("Duração (anos)", 16), step=1, min_value=1)
-        disc = st.number_input("Taxa de desconto (%)", value=P("Taxa de desconto (%)", 8.0)) / 100
-        fast = st.checkbox("Modo rápido (simula 1.º e último ano e interpola)", P("Modo rápido", True))
+        st.subheader(T("Finanças"))
+        start_year = st.number_input(T("Ano de início"), value=P("Ano de início", 2026), step=1)
+        years = st.number_input(T("Duração (anos)"), value=P("Duração (anos)", 16), step=1, min_value=1)
+        disc = st.number_input(T("Taxa de desconto (%)"), value=P("Taxa de desconto (%)", 8.0)) / 100
+        fast = st.checkbox(T("Modo rápido (simula 1.º e último ano e interpola)"), P("Modo rápido", True))
         HOR = ["Semana (previsão perfeita)", "Dia a dia (mais realista)"]
-        hor = st.selectbox("Horizonte do despacho", HOR, index=HOR.index(P("Horizonte do despacho", HOR[0])),
-                           help="Dia a dia: a bateria só conhece os preços do dia seguinte, como no mercado diário real, "
-                                "e volta ao estado de carga inicial no fim de cada dia.")
-        st.subheader("Outros custos do projeto")
-        other_capex = st.number_input("Capex adicional (EUR)", value=P("Capex adicional (EUR)", 0.0), min_value=0.0,
-                                      help="Licenciamento, ligação à rede, desenvolvimento...")
-        om = st.number_input("O&M no 1.º ano (EUR/ano)", value=P("O&M no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
-        om_esc = st.number_input("Crescimento anual do O&M (%)", value=P("Crescimento anual do O&M (%)", 2.0)) / 100
-        ins = st.number_input("Seguro no 1.º ano (EUR/ano)", value=P("Seguro no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
-        ins_chg = st.number_input("Variação anual do seguro (% do valor inicial)", value=P("Variação anual do seguro (% do valor inicial)", 0.0),
-                                  help="Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.") / 100
-        bsp_fee = st.number_input("Comissão do agregador/BSP (% das receitas de serviços de sistema)",
+        hor = st.selectbox(T("Horizonte do despacho"), HOR, format_func=T, index=HOR.index(P("Horizonte do despacho", HOR[0])),
+                           help=T("Dia a dia: a bateria só conhece os preços do dia seguinte, como no mercado diário real, "
+                                "e volta ao estado de carga inicial no fim de cada dia."))
+        st.subheader(T("Outros custos do projeto"))
+        other_capex = st.number_input(T("Capex adicional (EUR)"), value=P("Capex adicional (EUR)", 0.0), min_value=0.0,
+                                      help=T("Licenciamento, ligação à rede, desenvolvimento..."))
+        om = st.number_input(T("O&M no 1.º ano (EUR/ano)"), value=P("O&M no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+        om_esc = st.number_input(T("Crescimento anual do O&M (%)"), value=P("Crescimento anual do O&M (%)", 2.0)) / 100
+        ins = st.number_input(T("Seguro no 1.º ano (EUR/ano)"), value=P("Seguro no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+        ins_chg = st.number_input(T("Variação anual do seguro (% do valor inicial)"), value=P("Variação anual do seguro (% do valor inicial)", 0.0),
+                                  help=T("Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.")) / 100
+        bsp_fee = st.number_input(T("Comissão do agregador/BSP (% das receitas de serviços de sistema)"),
                                   value=P("Comissão do agregador/BSP (%)", 0.0), min_value=0.0, max_value=100.0) / 100
-        esc = st.number_input("Escalada anual dos preços de mercado (%)", value=P("Escalada anual dos preços (%)", 0.0),
-                              help="Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.") / 100
-        resid = st.number_input("Valor residual no fim (% do capex)", value=P("Valor residual (% do capex)", 0.0),
+        esc = st.number_input(T("Escalada anual dos preços de mercado (%)"), value=P("Escalada anual dos preços (%)", 0.0),
+                              help=T("Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.")) / 100
+        resid = st.number_input(T("Valor residual no fim (% do capex)"), value=P("Valor residual (% do capex)", 0.0),
                                 min_value=0.0, max_value=100.0) / 100
-        with st.expander("Financiamento e impostos"):
-            st.caption("Com imposto e dívida a zero, o caso é antes de impostos e só com capital próprio (como a GridCog).")
-            tax = st.number_input("Imposto sobre lucros, IRC + derrama (%)", value=P("Imposto sobre lucros (%)", 0.0),
+        with st.expander(T("Financiamento e impostos")):
+            st.caption(T("Com imposto e dívida a zero, o caso é antes de impostos e só com capital próprio (como a GridCog)."))
+            tax = st.number_input(T("Imposto sobre lucros, IRC + derrama (%)"), value=P("Imposto sobre lucros (%)", 0.0),
                                   min_value=0.0, max_value=60.0) / 100
-            dep_y = st.number_input("Amortização fiscal do capex (anos)", value=P("Amortização fiscal (anos)", 15), min_value=1, step=1)
-            debt_pct = st.number_input("Dívida (% do capex)", value=P("Dívida (% do capex)", 0.0), min_value=0.0, max_value=100.0) / 100
-            debt_rate = st.number_input("Taxa de juro da dívida (%)", value=P("Taxa de juro da dívida (%)", 5.0), min_value=0.0) / 100
-            debt_ten = st.number_input("Prazo da dívida (anos)", value=P("Prazo da dívida (anos)", 10), min_value=1, step=1)
+            dep_y = st.number_input(T("Amortização fiscal do capex (anos)"), value=P("Amortização fiscal (anos)", 15), min_value=1, step=1)
+            debt_pct = st.number_input(T("Dívida (% do capex)"), value=P("Dívida (% do capex)", 0.0), min_value=0.0, max_value=100.0) / 100
+            debt_rate = st.number_input(T("Taxa de juro da dívida (%)"), value=P("Taxa de juro da dívida (%)", 5.0), min_value=0.0) / 100
+            debt_ten = st.number_input(T("Prazo da dívida (anos)"), value=P("Prazo da dívida (anos)", 10), min_value=1, step=1)
             KINDS = ["Prestação constante (anuidade)", "Amortização constante"]
-            debt_kind = st.selectbox("Reembolso", KINDS, index=KINDS.index(P("Reembolso", KINDS[0])))
-            dscr_min = st.number_input("DSCR mínimo exigido (0 = sem limite)", value=P("DSCR mínimo", 0.0), min_value=0.0,
-                                       help="Se definido, a dívida é reduzida até cada ano ter pelo menos este DSCR.")
-            eq_rate = st.number_input("Custo do capital próprio (%)", value=P("Custo do capital próprio (%)", 10.0), min_value=0.0) / 100
+            debt_kind = st.selectbox(T("Reembolso"), KINDS, format_func=T, index=KINDS.index(P("Reembolso", KINDS[0])))
+            dscr_min = st.number_input(T("DSCR mínimo exigido (0 = sem limite)"), value=P("DSCR mínimo", 0.0), min_value=0.0,
+                                       help=T("Se definido, a dívida é reduzida até cada ano ter pelo menos este DSCR."))
+            eq_rate = st.number_input(T("Custo do capital próprio (%)"), value=P("Custo do capital próprio (%)", 10.0), min_value=0.0) / 100
 
 with tab_var:
-    st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
-             "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh.")
-    variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}")
+    st.write(T("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
+             "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh."))
+    variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
+                                 column_config={c: st.column_config.Column(T(c)) for c in
+                                                ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)")})
 
 def _current_project() -> dict:
     vdf = variants_df.dropna(subset=["Variante"]).copy()
@@ -396,16 +410,16 @@ def _current_project() -> dict:
 
 c_run, c_save, c_dl = st.columns([1, 1, 1])
 with c_run:
-    run = st.button("Correr simulação", type="primary")
+    run = st.button(T("Correr simulação"), type="primary")
 with c_save:
-    if st.button("Guardar projeto na biblioteca"):
+    if st.button(T("Guardar projeto na biblioteca")):
         try:
             fn = lib.save_project(_current_project())
-            st.success(f"Guardado como {fn[:-5].replace('_', ' ')}. Se já existia com este nome, foi substituído.")
+            st.success(T("Guardado como {fn}. Se já existia com este nome, foi substituído.").format(fn=fn[:-5].replace('_', ' ')))
         except Exception as e:  # noqa: BLE001
-            st.error(f"Não foi possível guardar: {e}")
+            st.error(T("Não foi possível guardar: {e}").format(e=e))
 with c_dl:
-    st.download_button("Descarregar projeto (.json)", json.dumps(_current_project(), ensure_ascii=False, indent=2),
+    st.download_button(T("Descarregar projeto (.json)"), json.dumps(_current_project(), ensure_ascii=False, indent=2),
                        file_name=lib.safe_name(name), mime="application/json")
 
 if run:
@@ -441,55 +455,55 @@ if run:
         tax_rate=tax, dep_years=int(dep_y), debt_pct=debt_pct, debt_rate=debt_rate, debt_tenor=int(debt_ten),
         debt_kind="anuidade" if debt_kind.startswith("Prest") else "constante", min_dscr=dscr_min or None,
         equity_rate=eq_rate, variants=vs)
-    bar = st.progress(0.0, "A preparar dados de mercado e PV...")
+    bar = st.progress(0.0, T("A preparar dados de mercado e PV..."))
     try:
-        st.session_state["result"] = run_project(cfg, progress=lambda f, t: bar.progress(f, t))
-        bar.progress(1.0, "Concluído")
+        st.session_state["result"] = run_project(cfg, progress=lambda f, t: bar.progress(f, TP(t)))
+        bar.progress(1.0, T("Concluído"))
     except Exception as e:  # noqa: BLE001
         bar.empty()
-        st.error(f"A simulação falhou: {e}")
+        st.error(T("A simulação falhou: {e}").format(e=e))
 
 with tab_res:
     port = st.session_state.get("portfolio")
     if port:
-        st.subheader("Carteira de projetos")
+        st.subheader(T("Carteira de projetos"))
         pt = portfolio_table(port)
         cols = ["Projeto", "Variante", "Capex (EUR)", "Opex (EUR/ano)", "Ganho 1.º ano face à base (EUR)",
                 "VAL (EUR)", "TIR", "Payback (anos)"]
-        st.dataframe(pt[cols].style.format({
+        st.dataframe(TD(pt[cols]).style.format(TF({
             "Capex (EUR)": "{:,.0f}", "Opex (EUR/ano)": "{:,.0f}", "Ganho 1.º ano face à base (EUR)": "{:,.0f}",
-            "VAL (EUR)": "{:,.0f}", "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
-            "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}"}), width="stretch", hide_index=True)
+            "VAL (EUR)": "{:,.0f}", "TIR": lambda x: T("n.d.") if pd.isna(x) else f"{x * 100:.1f}%",
+            "Payback (anos)": lambda x: T("n.d.") if pd.isna(x) else f"{x:.1f}"})), width="stretch", hide_index=True)
         k1, k2, k3 = st.columns(3)
-        k1.metric("Capex total", f"{pt['Capex (EUR)'].sum():,.0f} EUR")
-        k2.metric("VAL total (NPV)", f"{pt['VAL (EUR)'].sum():,.0f} EUR")
-        k3.metric("Ganho total 1.º ano", f"{pt['Ganho 1.º ano face à base (EUR)'].sum():,.0f} EUR")
+        k1.metric(T("Capex total"), f"{pt['Capex (EUR)'].sum():,.0f} EUR")
+        k2.metric(T("VAL total (NPV)"), f"{pt['VAL (EUR)'].sum():,.0f} EUR")
+        k3.metric(T("Ganho total 1.º ano"), f"{pt['Ganho 1.º ano face à base (EUR)'].sum():,.0f} EUR")
         pbuf = io.BytesIO()
         portfolio_excel(port, pbuf)
-        st.download_button("Descarregar carteira (Excel)", pbuf.getvalue(), file_name="GridForce_carteira.xlsx",
+        st.download_button(T("Descarregar carteira (Excel)"), translate_xlsx(pbuf.getvalue()), file_name="GridForce_carteira.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.divider()
     res = st.session_state.get("result")
     if res is None and port:
-        st.caption("Para ver gráficos e despacho de um projeto, escolhe-o em cima e carrega em Correr simulação.")
+        st.caption(T("Para ver gráficos e despacho de um projeto, escolhe-o em cima e carrega em Correr simulação."))
     elif res is None:
-        st.info("Preenche os separadores 1 a 4 e carrega em **Correr simulação**.")
+        st.info(T("Preenche os separadores 1 a 4 e carrega em **Correr simulação**."))
     else:
         summ = pd.DataFrame([r.metrics for r in res.variants])
         best = summ.loc[summ["VAL (EUR)"].idxmax()]
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Melhor variante (maior VAL / NPV)", best["Variante"])
-        k2.metric("VAL (NPV)", f"{best['VAL (EUR)']:,.0f} EUR",
-                  help="Valor Atual Líquido, em inglês Net Present Value (NPV), à taxa de desconto do separador 3.")
-        k3.metric("TIR (IRR)", "n.d." if pd.isna(best["TIR"]) else f"{best['TIR'] * 100:.1f}%")
-        k4.metric("Payback", "n.d." if pd.isna(best["Payback (anos)"]) else f"{best['Payback (anos)']:.1f} anos")
+        k1.metric(T("Melhor variante (maior VAL / NPV)"), best["Variante"])
+        k2.metric(T("VAL (NPV)"), f"{best['VAL (EUR)']:,.0f} EUR",
+                  help=T("Valor Atual Líquido, em inglês Net Present Value (NPV), à taxa de desconto do separador 3."))
+        k3.metric(T("TIR (IRR)"), T("n.d.") if pd.isna(best["TIR"]) else f"{best['TIR'] * 100:.1f}%")
+        k4.metric(T("Payback"), T("n.d.") if pd.isna(best["Payback (anos)"]) else f"{best['Payback (anos)']:.1f} {T('anos')}")
 
-        st.subheader("Resumo das variantes")
-        st.dataframe(summ.style.format({
+        st.subheader(T("Resumo das variantes"))
+        st.dataframe(TD(summ).style.format(TF({
             "PV (kWp)": "{:,.0f}", "BESS (kWh)": "{:,.0f}", "BESS (kW)": "{:,.0f}",
             "Capex (EUR)": "{:,.0f}", "Opex (EUR/ano)": "{:,.0f}", "VAL (EUR)": "{:,.0f}",
-            "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
-            "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}",
+            "TIR": lambda x: T("n.d.") if pd.isna(x) else f"{x * 100:.1f}%",
+            "Payback (anos)": lambda x: T("n.d.") if pd.isna(x) else f"{x:.1f}",
             "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "Autoconsumo PV (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
             "Importação 1.º ano (MWh)": "{:,.0f}", "EBITDA 1.º ano (EUR)": "{:,.0f}",
             "Ganho 1.º ano por MW de bateria (EUR/MW)": lambda x: "" if pd.isna(x) else f"{x:,.0f}",
@@ -498,26 +512,26 @@ with tab_res:
             "Estado de saúde no fim (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
             "Augmentation e substituições (EUR)": "{:,.0f}",
             "Custo nivelado do PV e bateria (EUR/MWh PV)": lambda x: "" if pd.isna(x) else f"{x:,.1f}",
-            "TIR do projeto após impostos": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
-            "TIR do acionista": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
+            "TIR do projeto após impostos": lambda x: T("n.d.") if pd.isna(x) else f"{x * 100:.1f}%",
+            "TIR do acionista": lambda x: T("n.d.") if pd.isna(x) else f"{x * 100:.1f}%",
             "VAL do projeto após impostos (EUR)": "{:,.0f}", "VAL do acionista (EUR)": "{:,.0f}", "Dívida (EUR)": "{:,.0f}",
-            "DSCR mínimo": lambda x: "" if pd.isna(x) else f"{x:.2f}", "DSCR médio": lambda x: "" if pd.isna(x) else f"{x:.2f}"}),
+            "DSCR mínimo": lambda x: "" if pd.isna(x) else f"{x:.2f}", "DSCR médio": lambda x: "" if pd.isna(x) else f"{x:.2f}"})),
             width="stretch", hide_index=True)
 
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("Value stack, 1.º ano, face à base")
+            st.subheader(T("Value stack, 1.º ano, face à base"))
             rows = []
             for r in res.variants:
                 for k, v in r.yearly_streams.iloc[0].items():
                     delta = v - res.baseline_streams.get(k, 0.0)
                     if abs(delta) > 1:
-                        rows.append({"Variante": r.variant.name, "Fonte de valor": k, "EUR": delta})
-            fig = px.bar(pd.DataFrame(rows), x="Variante", y="EUR", color="Fonte de valor", barmode="relative")
+                        rows.append({T("Variante"): r.variant.name, T("Fonte de valor"): T(k), "EUR": delta})
+            fig = px.bar(pd.DataFrame(rows), x=T("Variante"), y="EUR", color=T("Fonte de valor"), barmode="relative")
             fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"), height=520, margin=dict(t=110))
             st.plotly_chart(_style(fig), width="stretch")
         with c2:
-            st.subheader("Cashflow descontado acumulado")
+            st.subheader(T("Cashflow descontado acumulado"))
             fig = go.Figure()
             for r in res.variants:
                 cf = r.cashflows
@@ -527,113 +541,114 @@ with tab_res:
             fig.update_layout(height=520, margin=dict(t=110), yaxis_title="EUR", legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             st.plotly_chart(_style(fig), width="stretch")
 
-        st.subheader("Despacho num dia")
+        st.subheader(T("Despacho num dia"))
         c1, c2 = st.columns([1, 3])
         with c1:
-            vname = st.selectbox("Variante", [r.variant.name for r in res.variants])
+            vname = st.selectbox(T("Variante"), [r.variant.name for r in res.variants])
             r = next(x for x in res.variants if x.variant.name == vname)
             days = sorted({d.date() for d in r.dispatch_y1.index})
-            day = st.select_slider("Dia", options=days, value=days[len(days) // 2])
+            day = st.select_slider(T("Dia"), options=days, value=days[len(days) // 2])
         with c2:
             d = r.dispatch_y1[r.dispatch_y1.index.date == day]
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=d.index, y=d.load, name="Consumo", line=dict(color=BRAND["text"], width=2)))
-            fig.add_trace(go.Bar(x=d.index, y=d.pv, name="PV usado"))
-            fig.add_trace(go.Bar(x=d.index, y=d.dis - d.ch, name="Bateria (+descarga / -carga)"))
-            fig.add_trace(go.Bar(x=d.index, y=d.imp - d.exp, name="Rede, mercado (+import / -export)"))
+            fig.add_trace(go.Scatter(x=d.index, y=d.load, name=T("Consumo"), line=dict(color=BRAND["text"], width=2)))
+            fig.add_trace(go.Bar(x=d.index, y=d.pv, name=T("PV usado")))
+            fig.add_trace(go.Bar(x=d.index, y=d.dis - d.ch, name=T("Bateria (+descarga / -carga)")))
+            fig.add_trace(go.Bar(x=d.index, y=d.imp - d.exp, name=T("Rede, mercado (+import / -export)")))
             if d.xpv.sum() > 0:
-                fig.add_trace(go.Bar(x=d.index, y=-d.xpv, name="Rede, PV a preço fixo"))
+                fig.add_trace(go.Bar(x=d.index, y=-d.xpv, name=T("Rede, PV a preço fixo")))
             if d.rup.sum() + d.rdn.sum() > 0:
-                fig.add_trace(go.Scatter(x=d.index, y=d.rup, name="Reserva aFRR subir", line=dict(dash="dot")))
-            fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name="Preço OMIE (EUR/MWh)", yaxis="y2",
+                fig.add_trace(go.Scatter(x=d.index, y=d.rup, name=T("Reserva aFRR subir"), line=dict(dash="dot")))
+            fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name=T("Preço OMIE (EUR/MWh)"), yaxis="y2",
                                      line=dict(color="#F2C14E")))
             fig.update_layout(barmode="relative", height=480, margin=dict(t=80), yaxis_title="kW",
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             st.plotly_chart(_style(fig), width="stretch")
 
-        st.subheader("Contas anuais")
-        vname_a = st.selectbox("Variante ", [x.variant.name for x in res.variants], key="annual_pick")
+        st.subheader(T("Contas anuais"))
+        vname_a = st.selectbox(T("Variante "), [x.variant.name for x in res.variants], key="annual_pick")
         ra = next(x for x in res.variants if x.variant.name == vname_a)
         if ra.annual is not None:
             fmt_a = {c: ("{:.2f}" if c == "DSCR" else "{:.0f}" if c.startswith("Estado") else
                          "{:.0f}" if c.startswith("Ciclos") else "{:,.0f}") for c in ra.annual.columns}
-            st.dataframe(ra.annual.style.format(fmt_a, na_rep=""), width="stretch")
-        st.subheader("Riscos e sensibilidades")
-        st.caption("Cada fator varia sozinho, com o despacho do caso base. Os outros ficam como no caso base.")
+            st.dataframe(TD(ra.annual).style.format(TF(fmt_a), na_rep=""), width="stretch")
+        st.subheader(T("Riscos e sensibilidades"))
+        st.caption(T("Cada fator varia sozinho, com o despacho do caso base. Os outros ficam como no caso base."))
         c1, c2, c3 = st.columns([2, 1, 1])
         with c1:
-            vname_s = st.selectbox("Variante  ", [x.variant.name for x in res.variants], key="sens_pick")
+            vname_s = st.selectbox(T("Variante  "), [x.variant.name for x in res.variants], key="sens_pick")
         with c2:
-            s_pct = st.number_input("Variação de receitas e opex (%)", value=20.0, min_value=1.0, max_value=90.0) / 100
+            s_pct = st.number_input(T("Variação de receitas e opex (%)"), value=20.0, min_value=1.0, max_value=90.0) / 100
         with c3:
-            c_pct = st.number_input("Variação do capex (%)", value=10.0, min_value=1.0, max_value=90.0) / 100
+            c_pct = st.number_input(T("Variação do capex (%)"), value=10.0, min_value=1.0, max_value=90.0) / 100
         rs = next(x for x in res.variants if x.variant.name == vname_s)
         if rs.parts is not None:
             tor = sens.tornado(rs.parts, s_pct, c_pct)
             b0 = tor.attrs["base_npv"]
             fig = go.Figure()
-            fig.add_trace(go.Bar(y=tor["Fator"], x=tor["VAL com fator a descer (EUR)"] - b0, base=b0, orientation="h",
-                                 name="Fator a descer", marker_color="#E4572E"))
-            fig.add_trace(go.Bar(y=tor["Fator"], x=tor["VAL com fator a subir (EUR)"] - b0, base=b0, orientation="h",
-                                 name="Fator a subir", marker_color="#2E86AB"))
+            fig.add_trace(go.Bar(y=[T(f_) for f_ in tor["Fator"]], x=tor["VAL com fator a descer (EUR)"] - b0, base=b0, orientation="h",
+                                 name=T("Fator a descer"), marker_color="#E4572E"))
+            fig.add_trace(go.Bar(y=[T(f_) for f_ in tor["Fator"]], x=tor["VAL com fator a subir (EUR)"] - b0, base=b0, orientation="h",
+                                 name=T("Fator a subir"), marker_color="#2E86AB"))
             fig.update_layout(barmode="overlay", height=120 + 45 * len(tor), margin=dict(t=60, l=10),
-                              xaxis_title="VAL (EUR)", yaxis=dict(autorange="reversed"),
+                              xaxis_title=T("VAL (EUR)"), yaxis=dict(autorange="reversed"),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             fig.add_vline(x=b0, line_dash="dot")
             st.plotly_chart(_style(fig), width="stretch")
-            st.dataframe(tor.drop(columns=["Amplitude (EUR)"]).style.format({
+            _tor = tor.drop(columns=["Amplitude (EUR)"]).assign(Fator=lambda x: x["Fator"].map(T))
+            st.dataframe(TD(_tor).style.format(TF({
                 "VAL com fator a descer (EUR)": "{:,.0f}", "VAL com fator a subir (EUR)": "{:,.0f}",
                 "TIR com fator a descer": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}",
-                "TIR com fator a subir": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"}),
+                "TIR com fator a subir": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"})),
                 width="stretch", hide_index=True)
 
-            st.markdown("**Cenários com preços de anos anteriores (P90 / P50 / P10)**")
-            st.caption("Simula o 1.º ano com os preços de cada um dos últimos anos e sorteia, para cada ano do projeto, "
-                       "um desses anos. P90 é o valor excedido em 90% dos casos (o mais prudente).")
+            st.markdown(T("**Cenários com preços de anos anteriores (P90 / P50 / P10)**"))
+            st.caption(T("Simula o 1.º ano com os preços de cada um dos últimos anos e sorteia, para cada ano do projeto, "
+                       "um desses anos. P90 é o valor excedido em 90% dos casos (o mais prudente)."))
             c1, c2 = st.columns([1, 2])
             with c1:
-                n_hist = st.number_input("Anos de preços a usar", value=3, min_value=2, max_value=6, step=1)
-                go_hist = st.button("Correr cenários de preços")
+                n_hist = st.number_input(T("Anos de preços a usar"), value=3, min_value=2, max_value=6, step=1)
+                go_hist = st.button(T("Correr cenários de preços"))
             key_h = (id(res), int(n_hist))
             if go_hist:
-                bar_h = st.progress(0.0, "A simular anos de preços...")
+                bar_h = st.progress(0.0, T("A simular anos de preços..."))
                 try:
                     st.session_state["price_years"] = (key_h, sens.run_price_years(
-                        res.config, int(n_hist), progress=lambda f, t: bar_h.progress(f, t)))
+                        res.config, int(n_hist), progress=lambda f, t: bar_h.progress(f, TP(t))))
                 except Exception as e:  # noqa: BLE001
-                    st.error(f"Os cenários falharam: {e}")
+                    st.error(T("Os cenários falharam: {e}").format(e=e))
                 bar_h.empty()
             ph = st.session_state.get("price_years")
             if ph and ph[0] == key_h:
                 py = ph[1]
                 for f_ in py["failed"]:
-                    st.warning(f"Sem dados para {f_}")
+                    st.warning(T("Sem dados para {x}").format(x=f_))
                 mc = sens.monte_carlo(rs.parts, vname_s, py)
                 if mc:
                     m1, m2, m3 = st.columns(3)
                     for col_, p_ in zip((m1, m2, m3), ("P90", "P50", "P10")):
                         t_ = mc[f"{p_} TIR"]
-                        col_.metric(f"{p_} VAL", f"{mc[f'{p_} VAL (EUR)']:,.0f} EUR",
+                        col_.metric(f"{p_} {T('VAL (NPV)')}", f"{mc[f'{p_} VAL (EUR)']:,.0f} EUR",
                                     help=None)
-                        col_.caption(f"TIR {t_:.1%}" if t_ is not None else "TIR n/d")
-                    st.dataframe(mc["por_ano"].style.format({
+                        col_.caption(f"{T('TIR')} {t_:.1%}" if t_ is not None else f"{T('TIR')} {T('n.d.')}")
+                    st.dataframe(TD(mc["por_ano"].assign(Preços=lambda x: x["Preços"].map(T))).style.format(TF({
                         "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "VAL se todos os anos fossem assim (EUR)": "{:,.0f}",
-                        "TIR": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"}), width="stretch", hide_index=True)
-                    fig = px.histogram(x=mc["npvs"], nbins=40, labels={"x": "VAL (EUR)"})
-                    fig.update_layout(height=300, yaxis_title="Casos", margin=dict(t=30))
+                        "TIR": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"})), width="stretch", hide_index=True)
+                    fig = px.histogram(x=mc["npvs"], nbins=40, labels={"x": T("VAL (EUR)")})
+                    fig.update_layout(height=300, yaxis_title=T("Casos"), margin=dict(t=30))
                     st.plotly_chart(_style(fig), width="stretch")
 
         if res.audit:
-            with st.expander("Auditoria da execução"):
-                st.table(pd.Series(res.audit, name="Valor").astype(str))
+            with st.expander(T("Auditoria da execução")):
+                st.table(TD(pd.Series(res.audit, name=T("Valor")).astype(str).to_frame()))
 
-        st.subheader("Energia no 1.º ano")
-        en = pd.DataFrame({"Base": res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})
-        st.dataframe(en.style.format("{:,.1f}"), width="stretch")
+        st.subheader(T("Energia no 1.º ano"))
+        en = pd.DataFrame({T("Base"): res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})
+        st.dataframe(TD(en).style.format("{:,.1f}"), width="stretch")
 
         buf = io.BytesIO()
         to_excel(res, buf)
-        st.download_button("Descarregar investment case (Excel)", buf.getvalue(),
+        st.download_button(T("Descarregar investment case (Excel)"), translate_xlsx(buf.getvalue()),
                            file_name=f"{res.config.name}_investment_case.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

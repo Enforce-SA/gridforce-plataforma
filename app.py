@@ -200,6 +200,24 @@ with tab_tech:
                                     min_value=0.0, max_value=100.0) / 100
             aux = st.number_input("Consumos auxiliares (kW por MW de bateria)", value=P("Consumos auxiliares (kW por MW)", 0.0),
                                   min_value=0.0, help="AVAC, controlo, transformador. Típico: 5 a 15 kW/MW.")
+        with st.expander("Degradação, fim de vida e substituições"):
+            DEG = ["Linear (% por ano)", "Por ciclos e calendário"]
+            deg_mode = st.radio("Modelo de degradação", DEG, index=DEG.index(P("Modelo de degradação", DEG[0])),
+                                help="Linear usa a 'Perda de capacidade anual'. Por ciclos soma a perda de calendário "
+                                     "e a perda por ciclo equivalente, com os ciclos que a simulação faz.")
+            cal = st.number_input("Perda por calendário (%/ano)", value=P("Perda por calendário (%/ano)", 1.0),
+                                  disabled=deg_mode == DEG[0]) / 100
+            cyc = st.number_input("Perda por ciclo equivalente (%)", value=P("Perda por ciclo equivalente (%)", 0.0033),
+                                  format="%.4f", disabled=deg_mode == DEG[0]) / 100
+            eol = st.number_input("Fim de vida (% da capacidade inicial)", value=P("Fim de vida (%)", 70.0),
+                                  disabled=deg_mode == DEG[0]) / 100
+            aug = st.checkbox("Repor capacidade no fim de vida (augmentation)", P("Augmentation", False),
+                              disabled=deg_mode == DEG[0])
+            aug_cost = st.number_input("Custo da reposição (EUR por kWh reposto)", value=P("Custo da reposição (EUR/kWh)", 150.0),
+                                       disabled=not aug or deg_mode == DEG[0])
+            pcs_y = st.number_input("Ano de substituição do PCS (0 = não)", value=P("Ano de substituição do PCS", 0), step=1,
+                                    min_value=0)
+            pcs_c = st.number_input("Custo da substituição do PCS (EUR/kW)", value=P("Custo da substituição do PCS (EUR/kW)", 0.0))
 
 with tab_mkt:
     c1, c2, c3 = st.columns(3)
@@ -287,7 +305,9 @@ if run:
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
         bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
         bess_eta_charge=eta_c or None, bess_eta_discharge=eta_d or None, bess_availability=avail,
-        bess_aux_kw_per_mw=aux, bsp_fee_pct=bsp_fee, price_escalation_yr=esc, residual_value_pct=resid,
+        bess_aux_kw_per_mw=aux, bess_deg_mode="ciclos" if deg_mode.startswith("Por ciclos") else "linear",
+        bess_cal_fade_yr=cal, bess_cycle_fade_per_efc=cyc, bess_eol_pct=eol, bess_augment=aug,
+        bess_augment_eur_kwh=aug_cost, pcs_replace_year=int(pcs_y), pcs_replace_eur_kw=pcs_c, bsp_fee_pct=bsp_fee, price_escalation_yr=esc, residual_value_pct=resid,
         arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc, afrr_cap_scale=cap_scale,
         intraday=intra, intraday_capture=capt, mfrr=mfrr, mfrr_up_act_rate=m_up, mfrr_dn_act_rate=m_dn,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
@@ -345,6 +365,8 @@ with tab_res:
             "Ganho 1.º ano por MW de bateria (EUR/MW)": lambda x: "" if pd.isna(x) else f"{x:,.0f}",
             "Ciclos por dia (1.º ano)": lambda x: "" if pd.isna(x) else f"{x:.2f}",
             "LCOS (EUR/MWh descarregado)": lambda x: "" if pd.isna(x) else f"{x:,.1f}",
+            "Estado de saúde no fim (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
+            "Augmentation e substituições (EUR)": "{:,.0f}",
             "Custo nivelado do PV e bateria (EUR/MWh PV)": lambda x: "" if pd.isna(x) else f"{x:,.1f}"}),
             width="stretch", hide_index=True)
 
@@ -400,7 +422,7 @@ with tab_res:
         vname_a = st.selectbox("Variante ", [x.variant.name for x in res.variants], key="annual_pick")
         ra = next(x for x in res.variants if x.variant.name == vname_a)
         if ra.annual is not None:
-            st.dataframe(ra.annual.style.format("{:,.0f}"), width="stretch")
+            st.dataframe(ra.annual.style.format("{:,.0f}", na_rep=""), width="stretch")
         if res.audit:
             with st.expander("Auditoria da execução"):
                 st.table(pd.Series(res.audit, name="Valor").astype(str))

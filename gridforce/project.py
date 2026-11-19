@@ -68,6 +68,14 @@ class ProjectConfig:
     bess_capex_eur_kwh: float = 509.05
     bess_eta_charge: float | None = None      # eficiências separadas (ex.: 0,92/0,92); None = raiz da RTE
     bess_eta_discharge: float | None = None
+    bess_deg_mode: str = "linear"             # "linear" (% por ano) ou "ciclos" (calendário + ciclos equivalentes)
+    bess_cal_fade_yr: float = 0.01            # perda por calendário (fração por ano)
+    bess_cycle_fade_per_efc: float = 0.000033 # perda por ciclo equivalente (0,0033% por ciclo)
+    bess_eol_pct: float = 0.70                # fim de vida (estado de saúde mínimo)
+    bess_augment: bool = False                # repor a capacidade quando chega ao fim de vida
+    bess_augment_eur_kwh: float = 150.0       # custo da reposição por kWh reposto
+    pcs_replace_year: int = 0                 # ano de substituição do PCS (0 = não)
+    pcs_replace_eur_kw: float = 0.0
     bess_availability: float = 1.0            # disponibilidade técnica (reduz potência e energia médias)
     bess_aux_kw_per_mw: float = 0.0           # consumos auxiliares (kW por MW de bateria), sempre ligados
     bess_opex_eur_kwh_yr: float = 0.0
@@ -183,33 +191,65 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
     base_net = sum(base_st.values())
 
     results = []
-    total_steps = len(cfg.variants) * (2 if cfg.fast else cfg.years)
+    total_steps = len(cfg.variants) * (2 if cfg.fast and cfg.bess_deg_mode != "ciclos" else
+                                       (cfg.years // 5 + 2 if cfg.fast else cfg.years))
     done = 0
     for v in cfg.variants:
-        sim_years = [0, cfg.years - 1] if cfg.fast and cfg.years > 1 else list(range(cfg.years))
+        cyc_mode = cfg.bess_deg_mode == "ciclos" and v.bess_kwh > 0 and v.bess_kw > 0
+        if cyc_mode:
+            sim_years = sorted(set(range(0, cfg.years, 5 if cfg.fast else 1)) | {cfg.years - 1})
+        else:
+            sim_years = [0, cfg.years - 1] if cfg.fast and cfg.years > 1 else list(range(cfg.years))
         per_year, d1 = {}, None
-        for y in sim_years:
-            pv = np.minimum(pv1 * v.pv_kwp * (1 - cfg.pv_degradation_yr) ** y, v.pv_kwp / cfg.pv_dc_ac_ratio)
-            bat = None
-            if v.bess_kwh > 0 and v.bess_kw > 0:
-                av = cfg.bess_availability
-                bat = Battery(v.bess_kwh * max(1 - cfg.bess_degradation_yr * y, 0.05) * av, v.bess_kw * av,
-                              rte=cfg.bess_rte,  # perda de capacidade linear (como a GridCog)
-                              soc_min=cfg.bess_soc_min, soc_max=cfg.bess_soc_max,
-                              degradation_eur_mwh=cfg.bess_wear_eur_mwh,
-                              max_cycles_per_day=cfg.bess_max_cycles_day or None,
-                              eta_charge=cfg.bess_eta_charge, eta_discharge=cfg.bess_eta_discharge)
-            site_y = site
-            if cfg.ppa_price_eur_mwh is not None:
-                site_y = replace(site, ppa_price_eur_mwh=cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * y)
-            load_v = load + (cfg.bess_aux_kw_per_mw * v.bess_kw / 1000.0 if bat is not None else 0.0)
-            res = simulate_year(idx, load_v, pv, mkt, bat, site_y)
-            per_year[y] = streams(res.df)
-            if y == 0:
-                d1 = res.df
-            done += 1
-            if progress:
-                progress(done / total_steps, f"{v.name}: ano {cfg.start_year + y}")
+        soh, efc_yr = 1.0, 0.0
+        soh_path, efc_path = [], []
+        repl = np.zeros(cfg.years)        # augmentation e substituições (EUR, positivos = custo)
+        aug_prev = False
+        for y in range(cfg.years):
+            if not cyc_mode:
+                soh = max(1 - cfg.bess_degradation_yr * y, 0.05)   # perda de capacidade linear (como a GridCog)
+            soh_path.append(soh)
+            # em modo ciclos simula também o ano em que a bateria chega ao fim de vida e o ano a seguir
+            # à reposição, para a interpolação não esconder o "dente de serra" da capacidade
+            near_eol = cyc_mode and efc_yr and soh - (cfg.bess_cal_fade_yr + cfg.bess_cycle_fade_per_efc * efc_yr) < cfg.bess_eol_pct
+            if y in sim_years or aug_prev or near_eol:
+                pv = np.minimum(pv1 * v.pv_kwp * (1 - cfg.pv_degradation_yr) ** y, v.pv_kwp / cfg.pv_dc_ac_ratio)
+                bat = None
+                if v.bess_kwh > 0 and v.bess_kw > 0:
+                    av = cfg.bess_availability
+                    bat = Battery(v.bess_kwh * soh * av, v.bess_kw * av, rte=cfg.bess_rte,
+                                  soc_min=cfg.bess_soc_min, soc_max=cfg.bess_soc_max,
+                                  degradation_eur_mwh=cfg.bess_wear_eur_mwh,
+                                  max_cycles_per_day=cfg.bess_max_cycles_day or None,
+                                  eta_charge=cfg.bess_eta_charge, eta_discharge=cfg.bess_eta_discharge)
+                site_y = site
+                if cfg.ppa_price_eur_mwh is not None:
+                    site_y = replace(site, ppa_price_eur_mwh=cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * y)
+                load_v = load + (cfg.bess_aux_kw_per_mw * v.bess_kw / 1000.0 if bat is not None else 0.0)
+                res = simulate_year(idx, load_v, pv, mkt, bat, site_y)
+                per_year[y] = streams(res.df)
+                if bat is not None:
+                    dd = res.df
+                    thr = float((dd.dis + dd.rup * mkt.afrr_up_act_rate * mkt.afrr_acceptance
+                                 + dd.mup * mkt.mfrr_up_act_rate).sum() * 0.25)       # kWh descarregados
+                    efc_yr = thr / v.bess_kwh                                            # ciclos equivalentes
+                if y == 0:
+                    d1 = res.df
+                done += 1
+                if progress:
+                    progress(min(done / total_steps, 1.0), f"{v.name}: ano {cfg.start_year + y}")
+            efc_path.append(efc_yr)
+            aug_prev = False
+            if cyc_mode:
+                soh -= cfg.bess_cal_fade_yr + cfg.bess_cycle_fade_per_efc * efc_yr
+                if soh < cfg.bess_eol_pct and y < cfg.years - 1:
+                    if cfg.bess_augment:
+                        repl[y] += (1 - soh) * v.bess_kwh * cfg.bess_augment_eur_kwh
+                        soh = 1.0
+                        aug_prev = True
+                    soh = max(soh, 0.05)
+            if cfg.pcs_replace_year and y + 1 == cfg.pcs_replace_year and v.bess_kw:
+                repl[y] += cfg.pcs_replace_eur_kw * v.bess_kw
         ys = pd.DataFrame(per_year).T.sort_index()
         ys = ys.reindex(range(cfg.years)).interpolate(method="index")
         ys.index = [cfg.start_year + i for i in ys.index]
@@ -229,27 +269,32 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
         residual = cfg.residual_value_pct * capex
         net_res = list(net_vs_base)
         net_res[-1] += residual
-        ic = investment_case(net_res, capex, opex_y, cfg.discount_rate, cfg.start_year)
+        ic = investment_case(net_res, capex, opex_y + repl, cfg.discount_rate, cfg.start_year)
         yrs_lbl = [cfg.start_year + i for i in range(cfg.years)]
         annual = pd.DataFrame({
             "Receitas líquidas face à base": net_vs_base, "Opex": -opex_y,
             "EBITDA": np.array(net_vs_base) - opex_y, "Valor residual": [0.0] * (cfg.years - 1) + [residual],
+            "Estado de saúde da bateria (%)": [100 * x for x in soh_path] if v.bess_kwh else [None] * cfg.years,
+            "Ciclos equivalentes no ano": efc_path if v.bess_kwh else [None] * cfg.years,
         }, index=yrs_lbl)
         annual.loc[cfg.start_year - 1] = {"Receitas líquidas face à base": 0.0, "Opex": 0.0, "EBITDA": 0.0,
                                           "Valor residual": 0.0}
         annual = annual.sort_index()
         annual.insert(3, "Capex", [-capex] + [0.0] * cfg.years)
-        annual["Cashflow"] = annual["EBITDA"] + annual["Capex"] + annual["Valor residual"]
+        annual.insert(4, "Augmentation e substituições", [0.0] + list(-repl))
+        annual["Cashflow"] = (annual["EBITDA"] + annual["Capex"] + annual["Augmentation e substituições"]
+                              + annual["Valor residual"])
         disc_f = 1 / (1 + cfg.discount_rate) ** np.arange(1, cfg.years + 1)
         e1 = annual_energy(d1)
         # energia descarregada (direta + ativações a subir) ao longo da vida, aproximada pelo 1.º ano
         # com a perda de capacidade linear
-        fade = np.maximum(1 - cfg.bess_degradation_yr * np.arange(cfg.years), 0.05)
+        fade = np.array(soh_path)
         dis1 = float((d1.dis + d1.rup * mkt.afrr_up_act_rate * mkt.afrr_acceptance
                       + d1.mup * mkt.mfrr_up_act_rate).sum() * 0.25 / 1000)
         pv1_mwh = e1["PV usado (MWh)"]
         pv_fade = (1 - cfg.pv_degradation_yr) ** np.arange(cfg.years)
         pv_opex_disc = float((opex_y * disc_f).sum())
+        pv_opex_disc += float((repl * disc_f).sum())
         lcos = (capex + pv_opex_disc) / float((dis1 * fade * disc_f).sum()) if (v.bess_kwh and not v.pv_kwp and dis1) else None
         lcoe = (capex + pv_opex_disc) / float((pv1_mwh * pv_fade * disc_f).sum()) if (v.pv_kwp and pv1_mwh) else None
         metrics = {
@@ -263,6 +308,8 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             "Ganho 1.º ano por MW de bateria (EUR/MW)": net_vs_base[0] / (v.bess_kw / 1000) if v.bess_kw else None,
             "Ciclos por dia (1.º ano)": dis1 * 1000 / v.bess_kwh / 365 if v.bess_kwh else None,
             "LCOS (EUR/MWh descarregado)": lcos,
+            "Estado de saúde no fim (%)": 100 * soh_path[-1] if v.bess_kwh else None,
+            "Augmentation e substituições (EUR)": float(repl.sum()),
             "Custo nivelado do PV e bateria (EUR/MWh PV)": lcoe,
         }
         results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1, annual))

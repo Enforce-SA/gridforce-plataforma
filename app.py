@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import json
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import importlib
+
+import gridforce.dispatch
+import gridforce.finance
+import gridforce.project
+
+# Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
+# pode manter a versão antiga dos módulos em memória.
+for _m in (gridforce.dispatch, gridforce.finance, gridforce.project):
+    importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
@@ -62,20 +73,61 @@ DEFAULT_VARIANTS = pd.DataFrame([
     {"Variante": "Só PV 1 MW", "PV (kWp)": 1000, "BESS (kWh)": 0, "BESS (kW)": 0, "Capex total (EUR)": None},
 ]).astype({"Capex total (EUR)": float})
 
+LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CSV)",
+              "Sem consumo (parque de produção e armazenamento)"]
+LEVELS = ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"]
+SALES = ["Mercado diário OMIE", "Preço fixo (PPA)"]
+
+with st.expander("Abrir projeto guardado (ficheiro .json)", expanded=False):
+    up = st.file_uploader("Ficheiro de projeto GridForce", type=["json"], key="preset_file")
+    if up is not None:
+        st.session_state["preset"] = json.loads(up.getvalue().decode("utf-8"))
+        st.session_state["preset_id"] = up.file_id if hasattr(up, "file_id") else up.name
+        st.success(f"Projeto carregado: {st.session_state['preset'].get('Nome do projeto', up.name)}. "
+                   "Os campos dos separadores já têm os valores deste projeto.")
+PRESET = st.session_state.get("preset", {})
+PRESET_ID = st.session_state.get("preset_id", "base")
+
+
+def P(key, default):
+    v = PRESET.get(key, default)
+    if isinstance(default, float) and not isinstance(v, bool):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+    if isinstance(default, int) and not isinstance(default, bool):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+    return v
+
+
+def _variants_default():
+    if "Variantes" in PRESET:
+        df = pd.DataFrame(PRESET["Variantes"])
+    else:
+        df = DEFAULT_VARIANTS.copy()
+    for c in ("PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)"):
+        if c not in df:
+            df[c] = None
+    return df.astype({"PV (kWp)": float, "BESS (kWh)": float, "BESS (kW)": float, "Capex total (EUR)": float})
+
+
 tab_site, tab_tech, tab_mkt, tab_var, tab_res = st.tabs(
     ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"])
 
 with tab_site:
     c1, c2 = st.columns(2)
     with c1:
-        name = st.text_input("Nome do projeto", "Shopping Centre")
-        lat = st.number_input("Latitude", value=38.96, format="%.4f")
-        lon = st.number_input("Longitude", value=-9.33, format="%.4f")
+        name = st.text_input("Nome do projeto", P("Nome do projeto", "Shopping Centre"))
+        lat = st.number_input("Latitude", value=P("Latitude", 38.96), format="%.4f")
+        lon = st.number_input("Longitude", value=P("Longitude", -9.33), format="%.4f")
     with c2:
-        load_mode = st.radio("Consumo do local", ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CSV)",
-                                                  "Sem consumo (parque de produção e armazenamento)"])
+        load_mode = st.radio("Consumo do local", LOAD_MODES, index=LOAD_MODES.index(P("Consumo do local", LOAD_MODES[0])))
         load_kw = None
-        annual = st.number_input("Consumo anual (MWh)", value=4666.4, min_value=0.0,
+        annual = st.number_input("Consumo anual (MWh)", value=P("Consumo anual (MWh)", 4666.4), min_value=0.0,
                                  disabled=load_mode != "Perfil tipo de centro comercial")
         if load_mode.startswith("Sem consumo"):
             annual = 0.0
@@ -92,77 +144,82 @@ with tab_site:
                 st.success(f"{len(vals):,} intervalos, {vals.sum() * 0.25 / 1000:,.1f} MWh/ano, ponta {vals.max():,.0f} kW")
     c3, c4 = st.columns(2)
     with c3:
-        imp_lim = st.number_input("Limite de importação (kW, 0 = sem limite)", value=0.0, min_value=0.0)
+        imp_lim = st.number_input("Limite de importação (kW, 0 = sem limite)", value=P("Limite de importação (kW, 0 = sem limite)", 0.0), min_value=0.0)
     with c4:
-        exp_lim = st.number_input("Limite de injeção na rede (kW, 0 = sem limite)", value=0.0, min_value=0.0)
+        exp_lim = st.number_input("Limite de injeção na rede (kW, 0 = sem limite)", value=P("Limite de injeção na rede (kW, 0 = sem limite)", 0.0), min_value=0.0)
 
 with tab_tech:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("PV")
-        tilt = st.number_input("Inclinação (°)", value=10.0)
-        az = st.number_input("Azimute (°, 180 = sul)", value=180.0)
-        loss = st.number_input("Perdas do sistema (%)", value=14.0)
-        dcac = st.number_input("Rácio DC/AC do inversor", value=1.2, min_value=0.5)
-        pv_deg = st.number_input("Degradação anual (%)", value=0.5) / 100
-        pv_capex = st.number_input("Capex PV (EUR/kWp)", value=900.0)
-        pv_opex = st.number_input("Opex PV (EUR/kWp/ano)", value=0.0)
+        tilt = st.number_input("Inclinação (°)", value=P("Inclinação (°)", 10.0))
+        az = st.number_input("Azimute (°, 180 = sul)", value=P("Azimute (°, 180 = sul)", 180.0))
+        loss = st.number_input("Perdas do sistema (%)", value=P("Perdas do sistema (%)", 14.0))
+        dcac = st.number_input("Rácio DC/AC do inversor", value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
+        pv_deg = st.number_input("Degradação anual (%)", value=P("Degradação anual (%)", 0.5)) / 100
+        pv_capex = st.number_input("Capex PV (EUR/kWp)", value=P("Capex PV (EUR/kWp)", 900.0))
+        pv_opex = st.number_input("Opex PV (EUR/kWp/ano)", value=P("Opex PV (EUR/kWp/ano)", 0.0))
     with c2:
         st.subheader("Bateria")
-        rte = st.number_input("Eficiência round-trip (%)", value=88.0) / 100
-        soc_min, soc_max = st.slider("Janela de SOC (%)", 0, 100, (5, 95))
-        b_deg = st.number_input("Perda de capacidade anual (%)", value=2.0) / 100
-        wear = st.number_input("Custo de desgaste (EUR/MWh descarregado)", value=5.0)
-        b_capex = st.number_input("Capex bateria (EUR/kWh)", value=509.05)
-        b_opex = st.number_input("Opex bateria (EUR/kWh/ano)", value=0.0)
+        rte = st.number_input("Eficiência round-trip (%)", value=P("Eficiência round-trip (%)", 88.0)) / 100
+        soc_min, soc_max = st.slider("Janela de SOC (%)", 0, 100, tuple(P("Janela de SOC (%)", (5, 95))))
+        b_deg = st.number_input("Perda de capacidade anual (%)", value=P("Perda de capacidade anual (%)", 2.0)) / 100
+        wear = st.number_input("Custo de desgaste (EUR/MWh descarregado)", value=P("Custo de desgaste (EUR/MWh descarregado)", 5.0))
+        b_capex = st.number_input("Capex bateria (EUR/kWh)", value=P("Capex bateria (EUR/kWh)", 509.05))
+        b_opex = st.number_input("Opex bateria (EUR/kWh/ano)", value=P("Opex bateria (EUR/kWh/ano)", 0.0))
 
 with tab_mkt:
     c1, c2, c3 = st.columns(3)
     with c1:
         st.subheader("Mercados")
-        p_end = st.date_input("Preços OMIE: últimos 12 meses até", dt.date(2026, 9, 30))
-        arbitrage = st.checkbox("Arbitragem no mercado diário (carregar da rede para vender)", True)
-        afrr = st.checkbox("Banda de regulação secundária (aFRR)", False,
+        p_end = st.date_input("Preços OMIE: últimos 12 meses até", dt.date.fromisoformat(P("Preços OMIE: últimos 12 meses até", "2026-09-30")))
+        arbitrage = st.checkbox("Arbitragem no mercado diário (carregar da rede para vender)", P("Arbitragem", True))
+        afrr = st.checkbox("Banda de regulação secundária (aFRR)", P("aFRR", False),
                            help="Precisa da chave ENTSO-E (variável ENTSOE_TOKEN).")
-        act = st.number_input("Taxa de ativação aFRR (%)", value=10.0) / 100
-        dur = st.number_input("Duração mínima da reserva (h)", value=1.0)
+        act = st.number_input("Taxa de ativação aFRR (%)", value=P("Taxa de ativação aFRR (%)", 10.0)) / 100
+        dur = st.number_input("Duração mínima da reserva (h)", value=P("Duração mínima da reserva (h)", 1.0))
     with c2:
         st.subheader("Tarifas")
-        lvl = st.selectbox("Nível de tensão (tarifa de acesso ERSE)", ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"])
-        extra = st.number_input("Outros custos na compra (EUR/MWh)", value=0.0,
+        lvl = st.selectbox("Nível de tensão (tarifa de acesso ERSE)", LEVELS, index=LEVELS.index(P("Nível de tensão", "MT")))
+        extra = st.number_input("Outros custos na compra (EUR/MWh)", value=P("Outros custos na compra (EUR/MWh)", 0.0),
                                 help="Margem do comercializador, CIEG, imposto especial de consumo, etc.")
-        fee = st.number_input("Comissão na venda (EUR/MWh)", value=0.0)
-        sale = st.radio("Venda da energia PV injetada", ["Mercado diário OMIE", "Preço fixo (PPA)"],
+        fee = st.number_input("Comissão na venda (EUR/MWh)", value=P("Comissão na venda (EUR/MWh)", 0.0))
+        sale = st.radio("Venda da energia PV injetada", SALES, index=SALES.index(P("Venda da energia PV injetada", SALES[0])),
                         help="Com preço fixo, a energia PV injetada diretamente é paga a esse preço; a bateria "
                              "continua a vender no mercado.")
-        ppa = st.number_input("Preço fixo no 1.º ano (EUR/MWh)", value=45.9, disabled=sale != "Preço fixo (PPA)")
-        ppa_esc = st.number_input("Aumento anual do preço fixo (EUR/MWh por ano)", value=0.9,
+        ppa = st.number_input("Preço fixo no 1.º ano (EUR/MWh)", value=P("Preço fixo no 1.º ano (EUR/MWh)", 45.9), disabled=sale != "Preço fixo (PPA)")
+        ppa_esc = st.number_input("Aumento anual do preço fixo (EUR/MWh por ano)", value=P("Aumento anual do preço fixo (EUR/MWh por ano)", 0.9),
                                   disabled=sale != "Preço fixo (PPA)")
     with c3:
         st.subheader("Finanças")
-        start_year = st.number_input("Ano de início", value=2026, step=1)
-        years = st.number_input("Duração (anos)", value=16, step=1, min_value=1)
-        disc = st.number_input("Taxa de desconto (%)", value=8.0) / 100
-        fast = st.checkbox("Modo rápido (simula 1.º e último ano e interpola)", True)
+        start_year = st.number_input("Ano de início", value=P("Ano de início", 2026), step=1)
+        years = st.number_input("Duração (anos)", value=P("Duração (anos)", 16), step=1, min_value=1)
+        disc = st.number_input("Taxa de desconto (%)", value=P("Taxa de desconto (%)", 8.0)) / 100
+        fast = st.checkbox("Modo rápido (simula 1.º e último ano e interpola)", P("Modo rápido", True))
         st.subheader("Outros custos do projeto")
-        other_capex = st.number_input("Capex adicional (EUR)", value=0.0, min_value=0.0,
+        other_capex = st.number_input("Capex adicional (EUR)", value=P("Capex adicional (EUR)", 0.0), min_value=0.0,
                                       help="Licenciamento, ligação à rede, desenvolvimento...")
-        om = st.number_input("O&M no 1.º ano (EUR/ano)", value=0.0, min_value=0.0)
-        om_esc = st.number_input("Crescimento anual do O&M (%)", value=2.0) / 100
-        ins = st.number_input("Seguro no 1.º ano (EUR/ano)", value=0.0, min_value=0.0)
-        ins_chg = st.number_input("Variação anual do seguro (% do valor inicial)", value=0.0,
+        om = st.number_input("O&M no 1.º ano (EUR/ano)", value=P("O&M no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+        om_esc = st.number_input("Crescimento anual do O&M (%)", value=P("Crescimento anual do O&M (%)", 2.0)) / 100
+        ins = st.number_input("Seguro no 1.º ano (EUR/ano)", value=P("Seguro no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+        ins_chg = st.number_input("Variação anual do seguro (% do valor inicial)", value=P("Variação anual do seguro (% do valor inicial)", 0.0),
                                   help="Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.") / 100
 
 with tab_var:
     st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
              "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh.")
-    variants_df = st.data_editor(DEFAULT_VARIANTS, num_rows="dynamic", width="stretch", key="variants")
+    variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}")
 
 run = st.button("Correr simulação", type="primary")
 
 if run:
-    vs = [Variant(str(r["Variante"]), float(r["PV (kWp)"] or 0), float(r["BESS (kWh)"] or 0), float(r["BESS (kW)"] or 0),
-                  capex_eur=None if pd.isna(r.get("Capex total (EUR)")) else float(r["Capex total (EUR)"]))
+    def _num(x, default=0.0):
+        try:
+            return default if x is None or pd.isna(x) or str(x).strip() == "" else float(x)
+        except (TypeError, ValueError):
+            return default
+    vs = [Variant(str(r["Variante"]), _num(r.get("PV (kWp)")), _num(r.get("BESS (kWh)")), _num(r.get("BESS (kW)")),
+                  capex_eur=_num(r.get("Capex total (EUR)"), None))
           for _, r in variants_df.dropna(subset=["Variante"]).iterrows()]
     cfg = ProjectConfig(
         name=name, lat=lat, lon=lon, annual_load_mwh=annual, load_kw=load_kw,

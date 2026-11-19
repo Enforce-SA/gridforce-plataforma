@@ -27,15 +27,23 @@ def annual_streams(df: pd.DataFrame, import_adder: float = 0.0, export_fee: floa
                    act_up: float = 0.0, act_dn: float = 0.0, acceptance: float = 1.0) -> dict[str, float]:
     """Receitas (+) e custos (-) do ano, em EUR, por fonte de valor."""
     mwh = DT / 1000.0
+    sell = df["sell"] if "sell" in df else df.da_price
+    buy = df["buy"] if "buy" in df else df.da_price
+    id_s = sell > df.da_price + 1e-9
+    id_b = buy < df.da_price - 1e-9
     s = {
-        "Mercado diário - venda (export)": float((df.exp * (df.da_price - export_fee)).sum() * mwh),
+        "Mercado diário - venda (export)": float((df.exp * (sell - export_fee) * ~id_s).sum() * mwh),
+        "Mercado diário - compra (import)": float(-(df.imp * buy * ~id_b).sum() * mwh),
+        "Mercado intradiário - venda (export)": float((df.exp * (sell - export_fee) * id_s).sum() * mwh),
+        "Mercado intradiário - compra (import)": float(-(df.imp * buy * id_b).sum() * mwh),
         "Venda PV a preço fixo (PPA)": float((df.xpv * (df.ppa_price - export_fee)).sum() * mwh) if "xpv" in df else 0.0,
-        "Mercado diário - compra (import)": float(-(df.imp * df.da_price).sum() * mwh),
         "Tarifas de acesso - energia e potência em ponta": float(-(df.imp * df.adder).sum() * mwh) if "adder" in df else 0.0,
         "aFRR subir - capacidade": float((df.rup * acceptance * df.up_cap).sum() * mwh),
         "aFRR descer - capacidade": float((df.rdn * acceptance * df.dn_cap).sum() * mwh),
         "aFRR subir - ativação": float((df.rup * acceptance * act_up * df.up_act).sum() * mwh),
         "aFRR descer - ativação": float(-(df.rdn * acceptance * act_dn * df.dn_act).sum() * mwh),
+        "mFRR subir - ativação": float((df.mup * df.mfrr_a_up * df.m_up).sum() * mwh) if "mup" in df else 0.0,
+        "mFRR descer - ativação": float(-(df.mdn * df.mfrr_a_dn * df.m_dn).sum() * mwh) if "mdn" in df else 0.0,
     }
     return s
 
@@ -56,6 +64,8 @@ def annual_energy(df: pd.DataFrame) -> dict[str, float]:
         "Descarga bateria (MWh)": float(df.dis.sum() * mwh),
         "aFRR subir médio (MW)": float(df.rup.mean() / 1000),
         "aFRR descer médio (MW)": float(df.rdn.mean() / 1000),
+        "mFRR subir médio (MW)": float(df.mup.mean() / 1000) if "mup" in df else 0.0,
+        "mFRR descer médio (MW)": float(df.mdn.mean() / 1000) if "mdn" in df else 0.0,
     }
 
 

@@ -61,6 +61,17 @@ class Markets:
     reserve_duration_h: float = 1.0              # energia que tem de estar disponível para a reserva
     min_bid_kw: float = 0.0
     enable_afrr: bool = True
+    # Mercado intradiário contínuo: a bateria compra/vende ao melhor de diário e intradiário,
+    # capturando só uma fração da vantagem do intradiário (previsão perfeita sobrestima o ganho).
+    intraday: np.ndarray | None = None           # EUR/MWh (NaN = sem negócio -> usa diário)
+    intraday_capture: float = 0.5
+    # mFRR (reserva de substituição manual): em Portugal só há pagamento da energia ativada
+    mfrr_up_act_price: np.ndarray | None = None  # EUR/MWh recebidos a subir
+    mfrr_dn_act_price: np.ndarray | None = None  # EUR/MWh pagos pelo agente a descer (negativo = recebe)
+    mfrr_up_act_rate: float = 0.40
+    mfrr_dn_act_rate: float = 0.49
+    mfrr_duration_h: float = 0.25
+    enable_mfrr: bool = False
     enable_arbitrage: bool = True                # permitir importar para vender (Grid -> Battery -> Grid)
 
 
@@ -75,10 +86,12 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     n = len(load)
     has_bat = bat is not None and bat.energy_kwh > 0 and bat.power_kw > 0
     afrr = has_bat and mkt.enable_afrr and mkt.afrr_up_cap is not None
+    mfrr = has_bat and mkt.enable_mfrr and mkt.mfrr_up_act_price is not None
+    reserves = afrr or mfrr
     # variáveis: pv_used, imp, exp, ch, dis, soc, r_up, r_dn
     ppa = site.ppa_price_eur_mwh is not None
     names = (["pv", "imp", "exp"] + (["xpv"] if ppa else []) + (["ch", "dis", "soc"] if has_bat else [])
-             + (["rup", "rdn"] if afrr else []))
+             + (["rup", "rdn"] if afrr else []) + (["mup", "mdn"] if mfrr else []))
     k = {nm: i for i, nm in enumerate(names)}
     nv = len(names) * n
 
@@ -97,15 +110,14 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
             ub[k[nm] * n:(k[nm] + 1) * n] = bat.power_kw
         lb[k["soc"] * n:(k["soc"] + 1) * n] = bat.soc_min * bat.energy_kwh
         ub[k["soc"] * n:(k["soc"] + 1) * n] = bat.soc_max * bat.energy_kwh
-    if afrr:
-        for nm in ("rup", "rdn"):
-            ub[k[nm] * n:(k[nm] + 1) * n] = bat.power_kw
+    for nm in (("rup", "rdn") if afrr else ()) + (("mup", "mdn") if mfrr else ()):
+        ub[k[nm] * n:(k[nm] + 1) * n] = bat.power_kw
 
     # custo (minimizar): kW * DT / 1000 = MWh
     c = np.zeros(nv)
     e = DT / 1000.0
-    c[k["imp"] * n:(k["imp"] + 1) * n] = (mk["da"] + mk["adder"]) * e
-    c[k["exp"] * n:(k["exp"] + 1) * n] = -(mk["da"] - site.export_fee_eur_mwh) * e
+    c[k["imp"] * n:(k["imp"] + 1) * n] = (mk["buy"] + mk["adder"]) * e
+    c[k["exp"] * n:(k["exp"] + 1) * n] = -(mk["sell"] - site.export_fee_eur_mwh) * e
     c[k["pv"] * n:(k["pv"] + 1) * n] = -1e-6  # preferir usar PV a cortar
     if ppa:
         c[k["xpv"] * n:(k["xpv"] + 1) * n] = -(site.ppa_price_eur_mwh - site.export_fee_eur_mwh) * e
@@ -116,6 +128,10 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
         a_up, a_dn = mkt.afrr_up_act_rate * acc, mkt.afrr_dn_act_rate * acc
         c[k["rup"] * n:(k["rup"] + 1) * n] = -(acc * mk["up_cap"] * e + a_up * mk["up_act"] * e) + a_up * bat.degradation_eur_mwh * e
         c[k["rdn"] * n:(k["rdn"] + 1) * n] = -(acc * mk["dn_cap"] * e - a_dn * mk["dn_act"] * e)
+    if mfrr:
+        mu, md = mkt.mfrr_up_act_rate, mkt.mfrr_dn_act_rate
+        c[k["mup"] * n:(k["mup"] + 1) * n] = -mu * mk["m_up"] * e + mu * bat.degradation_eur_mwh * e
+        c[k["mdn"] * n:(k["mdn"] + 1) * n] = md * mk["m_dn"] * e
 
     rows, cols, vals = [], [], []
     b_eq = []
@@ -140,6 +156,9 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
                 b_eq.append(soc0)
             if afrr:
                 rows += [r, r]; cols += [col("rdn", t), col("rup", t)]; vals += [-a_dn * eta * DT, a_up * DT / eta]
+            if mfrr:
+                rows += [r, r]; cols += [col("mdn", t), col("mup", t)]
+                vals += [-mkt.mfrr_dn_act_rate * eta * DT, mkt.mfrr_up_act_rate * DT / eta]
             r += 1
         # SOC final = SOC inicial (evita esvaziar no fim da janela)
         rows.append(r); cols.append(col("soc", n - 1)); vals.append(1); b_eq.append(soc0); r += 1
@@ -158,23 +177,28 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
                 rows += [r, r]; cols += [col("exp", t), col("dis", t)]; vals += [1, -1]; b_ub.append(0.0); r += 1
     if has_bat:
         for t in range(n):
-            # margem de potência: dis - ch + rup <= P  e  ch - dis + rdn <= P
-            if afrr:
-                rows += [r, r, r]; cols += [col("dis", t), col("ch", t), col("rup", t)]; vals += [1, -1, 1]
-                b_ub.append(bat.power_kw); r += 1
-                rows += [r, r, r]; cols += [col("ch", t), col("dis", t), col("rdn", t)]; vals += [1, -1, 1]
-                b_ub.append(bat.power_kw); r += 1
+            # margem de potência: dis - ch + rup + mup <= P  e  ch - dis + rdn + mdn <= P
+            if reserves:
+                up = [n_ for n_ in ("rup", "mup") if n_ in k]
+                dn = [n_ for n_ in ("rdn", "mdn") if n_ in k]
+                rows += [r] * (2 + len(up)); cols += [col("dis", t), col("ch", t)] + [col(x, t) for x in up]
+                vals += [1, -1] + [1] * len(up); b_ub.append(bat.power_kw); r += 1
+                rows += [r] * (2 + len(dn)); cols += [col("ch", t), col("dis", t)] + [col(x, t) for x in dn]
+                vals += [1, -1] + [1] * len(dn); b_ub.append(bat.power_kw); r += 1
             else:
                 rows += [r, r]; cols += [col("ch", t), col("dis", t)]; vals += [1, 1]
                 b_ub.append(bat.power_kw); r += 1
-        if afrr:
-            dur = mkt.reserve_duration_h
+        if reserves:
+            durs_up = ([("rup", mkt.reserve_duration_h)] if afrr else []) + ([("mup", mkt.mfrr_duration_h)] if mfrr else [])
+            durs_dn = ([("rdn", mkt.reserve_duration_h)] if afrr else []) + ([("mdn", mkt.mfrr_duration_h)] if mfrr else [])
             for t in range(n):
-                # energia para entregar reserva a subir: rup*dur/eta <= soc - soc_min
-                rows += [r, r]; cols += [col("rup", t), col("soc", t)]; vals += [dur / bat.eta, -1]
+                # energia para entregar a reserva a subir: sum(r*dur)/eta <= soc - soc_min
+                rows += [r] * (len(durs_up) + 1); cols += [col(x, t) for x, _ in durs_up] + [col("soc", t)]
+                vals += [d / bat.eta for _, d in durs_up] + [-1]
                 b_ub.append(-bat.soc_min * bat.energy_kwh); r += 1
-                # espaço para reserva a descer: rdn*dur*eta <= soc_max - soc
-                rows += [r, r]; cols += [col("rdn", t), col("soc", t)]; vals += [dur * bat.eta, 1]
+                # espaço para a reserva a descer: sum(r*dur)*eta <= soc_max - soc
+                rows += [r] * (len(durs_dn) + 1); cols += [col(x, t) for x, _ in durs_dn] + [col("soc", t)]
+                vals += [d * bat.eta for _, d in durs_dn] + [1]
                 b_ub.append(bat.soc_max * bat.energy_kwh); r += 1
         if not mkt.enable_arbitrage:
             # a bateria só carrega com PV: ch <= pv_used
@@ -207,6 +231,17 @@ def simulate_year(index: pd.DatetimeIndex, load_kw: np.ndarray, pv_kw: np.ndarra
                   up_act=mkt.afrr_up_act_price if mkt.afrr_up_act_price is not None else zeros,
                   dn_act=mkt.afrr_dn_act_price if mkt.afrr_dn_act_price is not None else zeros,
                   adder=np.broadcast_to(np.asarray(site.import_adder_eur_mwh, dtype=float), (n,)).copy())
+    da = np.asarray(mkt.day_ahead, dtype=float)
+    if mkt.intraday is not None:
+        idp = np.where(np.isnan(mkt.intraday), da, mkt.intraday)
+        eff = da + mkt.intraday_capture * (idp - da)
+    else:
+        idp = eff = da
+    series["id"] = idp
+    series["sell"] = np.maximum(da, eff)
+    series["buy"] = np.minimum(da, eff)
+    series["m_up"] = np.clip(mkt.mfrr_up_act_price, -1000, 1000) if mkt.mfrr_up_act_price is not None else zeros
+    series["m_dn"] = np.clip(mkt.mfrr_dn_act_price, -1000, 1000) if mkt.mfrr_dn_act_price is not None else zeros
     parts, total, msgs = [], 0.0, []
     soc = bat.soc_init * bat.energy_kwh if bat else 0.0
     for s in range(0, n, step):
@@ -220,10 +255,13 @@ def simulate_year(index: pd.DatetimeIndex, load_kw: np.ndarray, pv_kw: np.ndarra
     df["load"] = load_kw
     df["pv_avail"] = pv_kw
     df["da_price"] = mkt.day_ahead
-    for nm in ("up_cap", "dn_cap", "up_act", "dn_act", "adder"):
+    for nm in ("up_cap", "dn_cap", "up_act", "dn_act", "adder", "sell", "buy", "m_up", "m_dn"):
         df[nm] = series[nm]
+    df["id_price"] = series["id"]
+    df["mfrr_a_up"] = mkt.mfrr_up_act_rate
+    df["mfrr_a_dn"] = mkt.mfrr_dn_act_rate
     df["ppa_price"] = site.ppa_price_eur_mwh or 0.0
-    for nm in ("xpv", "ch", "dis", "soc", "rup", "rdn"):
+    for nm in ("xpv", "ch", "dis", "soc", "rup", "rdn", "mup", "mdn"):
         if nm not in df:
             df[nm] = 0.0
     return DispatchResult(df=df, objective_eur=-total, status=msgs)

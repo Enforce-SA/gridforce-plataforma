@@ -112,3 +112,32 @@ def afrr_prices(index: pd.DatetimeIndex, cache_dir: Path | str | None = None) ->
     if cache is not None:
         df.to_csv(cache)
     return df
+
+
+def mfrr_prices(index: pd.DatetimeIndex, cache_dir: Path | str | None = None) -> pd.DataFrame:
+    """Preços de ativação mFRR (EUR/MWh), colunas up_act e dn_act. Em Portugal não há pagamento
+    de capacidade mFRR publicado; usa-se a média das ativações programadas (A60) e diretas (A61)."""
+    start, end = index[0].tz_convert("UTC"), index[-1].tz_convert("UTC") + pd.Timedelta("15min")
+    cache = Path(cache_dir) / f"entsoe_mfrr_{start:%Y%m%d}_{end:%Y%m%d}.csv" if cache_dir else None
+    if cache is not None and cache.exists():
+        df = pd.read_csv(cache, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True).tz_convert(index.tz)
+        return df
+    acts = []
+    m = start
+    while m < end:
+        m2 = min(m + pd.DateOffset(months=1), end)
+        fmt = "%Y%m%d%H%M"
+        common = {"controlArea_Domain": PT, "periodStart": m.strftime(fmt), "periodEnd": m2.strftime(fmt),
+                  "documentType": "A84"}
+        for pt in ("A60", "A61"):
+            try:
+                acts.append(_parse_all(_get({**common, "processType": pt})))
+            except requests.HTTPError:
+                pass
+        m = m2
+    act = _to_15min(pd.concat(acts) if acts else pd.DataFrame(columns=["start", "step", "direction", "price"]), index)
+    df = pd.DataFrame({"up_act": act["up"], "dn_act": act["down"]}, index=index)
+    if cache is not None:
+        df.to_csv(cache)
+    return df

@@ -77,6 +77,12 @@ class ProjectConfig:
     afrr_act_rate: float = 0.10
     afrr_duration_h: float = 1.0
     afrr_acceptance: float = 1.0              # fração das horas com oferta aceite (GridCog: 0,5)
+    intraday: bool = False                    # bateria também negoceia no intradiário contínuo
+    intraday_capture: float = 0.25            # fração da vantagem do intradiário que se assume capturada
+    mfrr: bool = False                        # reserva mFRR (só energia ativada)
+    mfrr_up_act_rate: float = 0.40
+    mfrr_dn_act_rate: float = 0.49
+    mfrr_duration_h: float = 0.25
     prices_start: dt.date = dt.date(2025, 10, 1)
     prices_end: dt.date = dt.date(2026, 9, 30)
     # financeiro
@@ -120,7 +126,20 @@ def _inputs(cfg: ProjectConfig):
     if cfg.afrr:
         from .data.entsoe import afrr_prices
         afrr = afrr_prices(idx, cache_dir=CACHE)
+    idp = None
+    if cfg.intraday:
+        from .data.omie import intraday_prices
+        idp = intraday_prices(cfg.prices_start, cfg.prices_end, cache_dir=CACHE).reindex(idx).values
+    mf = None
+    if cfg.mfrr:
+        from .data.entsoe import mfrr_prices
+        mf = mfrr_prices(idx, cache_dir=CACHE)
     mkt = Markets(day_ahead=da.values,
+                  intraday=idp, intraday_capture=cfg.intraday_capture,
+                  mfrr_up_act_price=None if mf is None else mf.up_act.values,
+                  mfrr_dn_act_price=None if mf is None else mf.dn_act.values,
+                  mfrr_up_act_rate=cfg.mfrr_up_act_rate, mfrr_dn_act_rate=cfg.mfrr_dn_act_rate,
+                  mfrr_duration_h=cfg.mfrr_duration_h, enable_mfrr=mf is not None,
                   afrr_up_cap=None if afrr is None else afrr.up_cap.values,
                   afrr_dn_cap=None if afrr is None else afrr.dn_cap.values,
                   afrr_up_act_price=None if afrr is None else afrr.up_act.values,

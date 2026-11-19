@@ -66,7 +66,7 @@ _logo = Path(__file__).parent / "assets" / "enforce_logo.png"
 if _logo.exists():
     st.image(str(_logo), width=220)
 st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True)
-st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercado diário OMIE e serviços de sistema.")
+st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR).")
 
 DEFAULT_VARIANTS = pd.DataFrame([
     {"Variante": "PV 700 kW + 2 MWh", "PV (kWp)": 700, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
@@ -201,6 +201,15 @@ with tab_mkt:
         dur = st.number_input("Duração mínima da reserva (h)", value=P("Duração mínima da reserva (h)", 1.0))
         acc = st.number_input("Ofertas aceites (%)", value=P("Ofertas aceites (%)", 100.0), min_value=0.0, max_value=100.0,
                               help="Percentagem das horas em que a oferta de reserva é aceite. A GridCog usa 50%.") / 100
+        intra = st.checkbox("Mercado intradiário contínuo", P("Intradiário", False),
+                            help="A bateria compra e vende ao melhor preço entre o diário e o intradiário (OMIE).")
+        capt = st.number_input("Vantagem do intradiário capturada (%)", value=P("Vantagem do intradiário capturada (%)", 25.0),
+                               min_value=0.0, max_value=100.0, disabled=not intra,
+                               help="Com previsão perfeita, escolher sempre o melhor mercado sobrestima o ganho.") / 100
+        mfrr = st.checkbox("Reserva de substituição manual (mFRR)", P("mFRR", False),
+                           help="Só energia ativada, a preços da ENTSO-E. Precisa da chave ENTSOE_TOKEN.")
+        m_up = st.number_input("Ativação mFRR a subir (%)", value=P("Ativação mFRR a subir (%)", 40.0), disabled=not mfrr) / 100
+        m_dn = st.number_input("Ativação mFRR a descer (%)", value=P("Ativação mFRR a descer (%)", 49.0), disabled=not mfrr) / 100
     with c2:
         st.subheader("Tarifas")
         lvl = st.selectbox("Nível de tensão (tarifa de acesso ERSE)", LEVELS, index=LEVELS.index(P("Nível de tensão", "MT")))
@@ -257,6 +266,7 @@ if run:
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
         bess_wear_eur_mwh=wear, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
         arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc,
+        intraday=intra, intraday_capture=capt, mfrr=mfrr, mfrr_up_act_rate=m_up, mfrr_dn_act_rate=m_dn,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
         start_year=int(start_year), years=int(years), discount_rate=disc, fast=fast, variants=vs)
     bar = st.progress(0.0, "A preparar dados de mercado e PV...")

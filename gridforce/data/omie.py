@@ -67,3 +67,66 @@ def day_ahead_prices(start: dt.date, end: dt.date, cache_dir: Path | str | None 
     if cache is not None:
         s.to_csv(cache)
     return s
+
+
+ID_URL = "https://www.omie.es/es/file-download?parents=precios_pibcic&filename=precios_pibcic_{d:%Y%m%d}.1"
+
+
+def _num(x: str) -> float:
+    return float(x.replace(".", "").replace(",", ".")) if x.strip() else 0.0
+
+
+def _fetch_id_day(day: dt.date, retries: int = 4) -> pd.Series | None:
+    """Preço médio ponderado do intradiário contínuo para PT num dia, em 15 min (NaN onde não houve
+    negócios; sem negócios em PT usa-se o preço espanhol). Lê as colunas pelo cabeçalho, porque o
+    formato mudou (colunas de Marrocos, períodos horários ou de 15 minutos)."""
+    start_ts = pd.Timestamp(day, tz="Europe/Lisbon")
+    idx = pd.date_range(start_ts, start_ts + pd.Timedelta(days=1), freq="15min", inclusive="left")
+    for attempt in range(retries):
+        try:
+            r = requests.get(ID_URL.format(d=day), timeout=30)
+            if r.status_code == 404:
+                return pd.Series(float("nan"), index=idx)
+            r.raise_for_status()
+            lines = r.content.decode("latin-1").splitlines()
+            hourly = "horas" in lines[0]
+            head = next(l.split(";") for l in lines if l.startswith("A") and "Periodo" in l)
+            col = {h.strip(): k for k, h in enumerate(head)}
+            c_pt, c_es = col["MedioPT"], col["MedioES"]
+            c_mx, c_mn = col["M\u00e1ximoPT"], col["M\u00ednimoPT"]
+            prices = {}
+            for line in lines:
+                parts = line.strip().split(";")
+                if len(parts) <= c_pt or not parts[0].strip().isdigit():
+                    continue
+                pt, es = _num(parts[c_pt]), _num(parts[c_es])
+                traded_pt = not (pt == 0 and _num(parts[c_mx]) == 0 and _num(parts[c_mn]) == 0)
+                prices[int(parts[3])] = pt if traded_pt else (es if es != 0 else float("nan"))
+            n = len(idx)
+            per = 4 if hourly else 1
+            vals = [prices.get(min(t // per + 1, max(prices) if prices else 1), float("nan")) if hourly
+                    else prices.get(t + 1, float("nan")) for t in range(n)]
+            return pd.Series(vals, index=idx)
+        except (requests.RequestException, KeyError, StopIteration):
+            pass
+        time.sleep(2 ** attempt)
+    return pd.Series(float("nan"), index=idx)
+
+
+def intraday_prices(start: dt.date, end: dt.date, cache_dir: Path | str | None = None) -> pd.Series:
+    """Preço médio do intradiário contínuo (PT, ou ES quando não há negócios em PT), 15 min, EUR/MWh.
+    Intervalos sem dados ficam NaN (quem usa substitui pelo preço do mercado diário)."""
+    cache = None
+    if cache_dir:
+        cache = Path(cache_dir) / f"omie_id_pt_{start:%Y%m%d}_{end:%Y%m%d}.csv"
+        if cache.exists():
+            s = pd.read_csv(cache, index_col=0).iloc[:, 0]
+            s.index = pd.to_datetime(s.index, utc=True).tz_convert("Europe/Lisbon")
+            return s
+    days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(_fetch_id_day, days))
+    s = pd.concat(results).rename("omie_id_pt_eur_mwh")
+    if cache is not None:
+        s.to_csv(cache)
+    return s

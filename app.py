@@ -113,13 +113,12 @@ with st.expander(T("Biblioteca de projetos"), expanded=False):
     if _d is not None and _d <= 30:
         st.warning(T("A chave de acesso à biblioteca expira dentro de {d} dias. Crie uma nova no GitHub "
                      "(GridForce biblioteca, Regenerate token) e atualize-a nos Secrets do Streamlit.").format(d=_d))
-    c1, c2 = st.columns([3, 1])
+    c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
     with c1:
         sel = st.multiselect(T("Projetos da biblioteca a abrir"), lib_files, key="lib_sel",
                              format_func=lambda x: x[:-5].replace("_", " "))
     with c2:
-        st.write(T(""))
-        if lib_files and st.button(T("Selecionar todos")):
+        if lib_files and st.button(T("Selecionar todos"), width="stretch"):
             st.session_state["lib_sel"] = lib_files
             st.rerun()
     for fn in sel:

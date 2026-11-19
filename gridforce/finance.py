@@ -106,3 +106,74 @@ def investment_case(yearly_net_vs_baseline: list[float], capex: float, opex_yr: 
         "payback_years": payback,
         "first_year_earnings": float(cf[1]),
     }
+
+
+def debt_schedule(amount: float, rate: float, tenor: int, years: int, kind: str = "anuidade"):
+    """Juros e amortização por ano (listas com `years` elementos)."""
+    interest, principal = np.zeros(years), np.zeros(years)
+    bal = amount
+    tenor = max(1, min(int(tenor), years))
+    pay = amount * rate / (1 - (1 + rate) ** -tenor) if rate > 0 else amount / tenor
+    for t in range(tenor):
+        interest[t] = bal * rate
+        principal[t] = (pay - interest[t]) if kind == "anuidade" else amount / tenor
+        bal -= principal[t]
+    return interest, principal
+
+
+def financing(ebitda: np.ndarray, capex: float, residual: float, discount_rate: float,
+              debt_pct: float = 0.0, debt_rate: float = 0.05, debt_tenor: int = 10, debt_kind: str = "anuidade",
+              min_dscr: float | None = None, tax_rate: float = 0.0, dep_years: int = 15,
+              loss_cap: float = 0.65, equity_rate: float | None = None) -> dict:
+    """Dívida, impostos e cashflow do acionista a partir do EBITDA anual (já com augmentation e substituições).
+
+    - Dívida: percentagem do capex, a reembolsar em anuidade ou amortização constante. Se houver DSCR mínimo,
+      a dívida é reduzida até o DSCR de cada ano (com anuidade) ficar acima desse mínimo.
+    - Impostos: IRC + derrama sobre EBITDA - amortizações fiscais (lineares) - juros; prejuízos reportados
+      sem limite de anos, a deduzir até `loss_cap` do lucro tributável de cada ano.
+    - O valor residual entra no último ano, sem imposto."""
+    ebitda = np.asarray(ebitda, dtype=float)
+    n = len(ebitda)
+    dep = np.array([capex / dep_years if t < dep_years else 0.0 for t in range(n)])
+
+    def taxes(interest):
+        tax, losses = np.zeros(n), 0.0
+        for t in range(n):
+            base = ebitda[t] - dep[t] - interest[t]
+            if base <= 0:
+                losses += -base
+                continue
+            use = min(losses, loss_cap * base)
+            losses -= use
+            tax[t] = tax_rate * (base - use)
+        return tax
+
+    debt = debt_pct * capex
+    if debt > 0 and min_dscr:
+        # anuidade por euro de dívida; CFADS aproximado sem o efeito fiscal dos juros (prudente)
+        tenor = max(1, min(int(debt_tenor), n))
+        cfads0 = ebitda - taxes(np.zeros(n))
+        unit_i, unit_p = debt_schedule(1.0, debt_rate, tenor, n, debt_kind)
+        ds_unit = (unit_i + unit_p)[:tenor]
+        cap = float(np.min(cfads0[:tenor] / (min_dscr * ds_unit))) if np.all(ds_unit > 0) else debt
+        debt = max(0.0, min(debt, cap))
+    interest, principal = debt_schedule(debt, debt_rate, debt_tenor, n, debt_kind) if debt > 0 else (np.zeros(n), np.zeros(n))
+    tax = taxes(interest)
+    cfads = ebitda - tax
+    ds = interest + principal
+    dscr = np.where(ds > 0, cfads / np.where(ds > 0, ds, 1), np.nan)
+    eq_cf = np.concatenate([[-(capex - debt)], cfads - ds])
+    eq_cf[-1] += residual
+    tax_unlev = taxes(np.zeros(n))
+    proj_cf = np.concatenate([[-capex], ebitda - tax_unlev])
+    proj_cf[-1] += residual
+    er = discount_rate if equity_rate is None else equity_rate
+    return {
+        "debt": debt, "interest": interest, "principal": principal, "tax": tax, "cfads": cfads, "dscr": dscr,
+        "equity_cf": eq_cf, "equity_irr": irr(eq_cf),
+        "equity_npv": float((eq_cf / (1 + er) ** np.arange(n + 1)).sum()),
+        "project_irr_after_tax": irr(proj_cf),
+        "project_npv_after_tax": float((proj_cf / (1 + discount_rate) ** np.arange(n + 1)).sum()),
+        "min_dscr": float(np.nanmin(dscr)) if np.isfinite(dscr).any() else None,
+        "avg_dscr": float(np.nanmean(dscr)) if np.isfinite(dscr).any() else None,
+    }

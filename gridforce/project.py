@@ -17,11 +17,11 @@ from .data.load import shopping_centre
 from .data.omie import day_ahead_prices
 from .data.pvgis import map_to_index, pv_profile_per_kwp
 from .dispatch import Battery, Markets, Site, simulate_year
-from .finance import annual_energy, annual_streams, investment_case
+from .finance import financing, annual_energy, annual_streams, investment_case
 from .tariffs import TAR_2026, contracted_power_cost, import_adder_eur_mwh
 
 CACHE = Path(__file__).resolve().parent.parent / "cache"
-ENGINE_VERSION = "GridForce 0.6 (2026-11-19)"
+ENGINE_VERSION = "GridForce 0.7 (2026-11-19)"
 
 
 @dataclass
@@ -108,6 +108,19 @@ class ProjectConfig:
     years: int = 16
     discount_rate: float = 0.08
     fast: bool = True                         # simula 1.º e último ano e interpola os restantes
+    # financiamento e impostos (Fase D); com tudo a zero o caso é antes de impostos e só com capital próprio
+    tax_rate: float = 0.0                     # IRC + derrama
+    dep_years: int = 15                       # amortização fiscal linear do capex
+    debt_pct: float = 0.0                     # dívida em % do capex
+    debt_rate: float = 0.05
+    debt_tenor: int = 10
+    debt_kind: str = "anuidade"               # "anuidade" ou "constante"
+    min_dscr: float | None = None             # se definido, reduz a dívida para cumprir este DSCR mínimo
+    equity_rate: float | None = None          # taxa para o VAL do acionista (por omissão a taxa de desconto)
+    # janela de preços de serviços de sistema, se diferente da dos preços de energia (usado nos cenários
+    # de anos anteriores: a ENTSO-E não tem séries completas e coerentes para os anos antigos)
+    ancillary_window: tuple | None = None
+    horizon_days: int = 7                     # horizonte de otimização do despacho (7 = semana com previsão perfeita, 1 = dia a dia)
     variants: list[Variant] = field(default_factory=list)
 
 
@@ -120,6 +133,7 @@ class VariantResult:
     energy_y1: dict
     dispatch_y1: pd.DataFrame
     annual: pd.DataFrame | None = None    # receitas, opex, EBITDA, capex, valor residual, cashflow por ano
+    parts: dict | None = None             # peças do cashflow, para sensibilidades sem voltar a simular
 
 
 @dataclass
@@ -142,10 +156,18 @@ def _inputs(cfg: ProjectConfig):
         load = np.zeros(len(idx))
     else:
         load = shopping_centre(idx, cfg.annual_load_mwh)
+    anc_idx = idx
+    if cfg.ancillary_window and (cfg.afrr or cfg.mfrr):
+        anc_idx = day_ahead_prices(*cfg.ancillary_window, cache_dir=CACHE).index
+
+    def fit(df_):  # alinha por posição quando os serviços de sistema vêm de outro ano
+        if df_ is None or anc_idx is idx:
+            return df_
+        return pd.DataFrame({c: np.resize(df_[c].values, len(idx)) for c in df_.columns}, index=idx)
     afrr = None
     if cfg.afrr:
         from .data.entsoe import afrr_prices
-        afrr = afrr_prices(idx, cache_dir=CACHE)
+        afrr = fit(afrr_prices(anc_idx, cache_dir=CACHE))
     idp = None
     if cfg.intraday:
         from .data.omie import intraday_prices
@@ -153,7 +175,7 @@ def _inputs(cfg: ProjectConfig):
     mf = None
     if cfg.mfrr:
         from .data.entsoe import mfrr_prices
-        mf = mfrr_prices(idx, cache_dir=CACHE)
+        mf = fit(mfrr_prices(anc_idx, cache_dir=CACHE))
     mkt = Markets(day_ahead=da.values,
                   intraday=idp, intraday_capture=cfg.intraday_capture,
                   mfrr_up_act_price=None if mf is None else mf.up_act.values * (1 - cfg.bsp_fee_pct),
@@ -226,7 +248,7 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
                 if cfg.ppa_price_eur_mwh is not None:
                     site_y = replace(site, ppa_price_eur_mwh=cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * y)
                 load_v = load + (cfg.bess_aux_kw_per_mw * v.bess_kw / 1000.0 if bat is not None else 0.0)
-                res = simulate_year(idx, load_v, pv, mkt, bat, site_y)
+                res = simulate_year(idx, load_v, pv, mkt, bat, site_y, window_days=cfg.horizon_days)
                 per_year[y] = streams(res.df)
                 if bat is not None:
                     dd = res.df
@@ -284,6 +306,17 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
         annual.insert(4, "Augmentation e substituições", [0.0] + list(-repl))
         annual["Cashflow"] = (annual["EBITDA"] + annual["Capex"] + annual["Augmentation e substituições"]
                               + annual["Valor residual"])
+        fin = None
+        if cfg.tax_rate > 0 or cfg.debt_pct > 0:
+            fin = financing(np.array(net_vs_base) - opex_y - repl, capex, residual, cfg.discount_rate,
+                            debt_pct=cfg.debt_pct, debt_rate=cfg.debt_rate, debt_tenor=cfg.debt_tenor,
+                            debt_kind=cfg.debt_kind, min_dscr=cfg.min_dscr, tax_rate=cfg.tax_rate,
+                            dep_years=cfg.dep_years, equity_rate=cfg.equity_rate)
+            annual["Imposto (IRC)"] = [0.0] + list(-fin["tax"])
+            annual["Juros"] = [0.0] + list(-fin["interest"])
+            annual["Amortização da dívida"] = [fin["debt"]] + list(-fin["principal"])
+            annual["DSCR"] = [None] + [None if np.isnan(x) else x for x in fin["dscr"]]
+            annual["Cashflow do acionista"] = fin["equity_cf"]
         disc_f = 1 / (1 + cfg.discount_rate) ** np.arange(1, cfg.years + 1)
         e1 = annual_energy(d1)
         # energia descarregada (direta + ativações a subir) ao longo da vida, aproximada pelo 1.º ano
@@ -312,7 +345,21 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             "Augmentation e substituições (EUR)": float(repl.sum()),
             "Custo nivelado do PV e bateria (EUR/MWh PV)": lcoe,
         }
-        results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1, annual))
+        if fin:
+            metrics.update({
+                "TIR do projeto após impostos": fin["project_irr_after_tax"],
+                "VAL do projeto após impostos (EUR)": fin["project_npv_after_tax"],
+                "Dívida (EUR)": fin["debt"], "TIR do acionista": fin["equity_irr"],
+                "VAL do acionista (EUR)": fin["equity_npv"],
+                "DSCR mínimo": fin["min_dscr"], "DSCR médio": fin["avg_dscr"],
+            })
+        base_y = pd.DataFrame({c_: [base_st.get(c_, 0.0)] * cfg.years for c_ in ys.columns}, index=ys.index)
+        if ppa_col in base_y:
+            base_y[ppa_col] = 0.0
+        delta = ys - base_y.mul(esc, axis=0)
+        parts = dict(delta=delta, capex=capex, opex_y=np.asarray(opex_y, dtype=float), repl=repl,
+                     residual=residual, discount_rate=cfg.discount_rate, start_year=cfg.start_year)
+        results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1, annual, parts))
     return ProjectResult(cfg, base_st, annual_energy(base.df), results, audit=_audit(cfg, idx, mkt, results))
 
 

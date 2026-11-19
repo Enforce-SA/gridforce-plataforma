@@ -20,13 +20,16 @@ import gridforce.dispatch
 import gridforce.finance
 import gridforce.project
 import gridforce.presets
+import gridforce.sensitivity
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
 # pode manter a versão antiga dos módulos em memória.
-for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets):
+for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets,
+           gridforce.sensitivity):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
+from gridforce import sensitivity as sens
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
@@ -261,6 +264,10 @@ with tab_mkt:
         years = st.number_input("Duração (anos)", value=P("Duração (anos)", 16), step=1, min_value=1)
         disc = st.number_input("Taxa de desconto (%)", value=P("Taxa de desconto (%)", 8.0)) / 100
         fast = st.checkbox("Modo rápido (simula 1.º e último ano e interpola)", P("Modo rápido", True))
+        HOR = ["Semana (previsão perfeita)", "Dia a dia (mais realista)"]
+        hor = st.selectbox("Horizonte do despacho", HOR, index=HOR.index(P("Horizonte do despacho", HOR[0])),
+                           help="Dia a dia: a bateria só conhece os preços do dia seguinte, como no mercado diário real, "
+                                "e volta ao estado de carga inicial no fim de cada dia.")
         st.subheader("Outros custos do projeto")
         other_capex = st.number_input("Capex adicional (EUR)", value=P("Capex adicional (EUR)", 0.0), min_value=0.0,
                                       help="Licenciamento, ligação à rede, desenvolvimento...")
@@ -275,6 +282,19 @@ with tab_mkt:
                               help="Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.") / 100
         resid = st.number_input("Valor residual no fim (% do capex)", value=P("Valor residual (% do capex)", 0.0),
                                 min_value=0.0, max_value=100.0) / 100
+        with st.expander("Financiamento e impostos"):
+            st.caption("Com imposto e dívida a zero, o caso é antes de impostos e só com capital próprio (como a GridCog).")
+            tax = st.number_input("Imposto sobre lucros, IRC + derrama (%)", value=P("Imposto sobre lucros (%)", 0.0),
+                                  min_value=0.0, max_value=60.0) / 100
+            dep_y = st.number_input("Amortização fiscal do capex (anos)", value=P("Amortização fiscal (anos)", 15), min_value=1, step=1)
+            debt_pct = st.number_input("Dívida (% do capex)", value=P("Dívida (% do capex)", 0.0), min_value=0.0, max_value=100.0) / 100
+            debt_rate = st.number_input("Taxa de juro da dívida (%)", value=P("Taxa de juro da dívida (%)", 5.0), min_value=0.0) / 100
+            debt_ten = st.number_input("Prazo da dívida (anos)", value=P("Prazo da dívida (anos)", 10), min_value=1, step=1)
+            KINDS = ["Prestação constante (anuidade)", "Amortização constante"]
+            debt_kind = st.selectbox("Reembolso", KINDS, index=KINDS.index(P("Reembolso", KINDS[0])))
+            dscr_min = st.number_input("DSCR mínimo exigido (0 = sem limite)", value=P("DSCR mínimo", 0.0), min_value=0.0,
+                                       help="Se definido, a dívida é reduzida até cada ano ter pelo menos este DSCR.")
+            eq_rate = st.number_input("Custo do capital próprio (%)", value=P("Custo do capital próprio (%)", 10.0), min_value=0.0) / 100
 
 with tab_var:
     st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
@@ -311,7 +331,11 @@ if run:
         arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc, afrr_cap_scale=cap_scale,
         intraday=intra, intraday_capture=capt, mfrr=mfrr, mfrr_up_act_rate=m_up, mfrr_dn_act_rate=m_dn,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
-        start_year=int(start_year), years=int(years), discount_rate=disc, fast=fast, variants=vs)
+        start_year=int(start_year), years=int(years), discount_rate=disc, fast=fast,
+        horizon_days=1 if hor.startswith("Dia") else 7,
+        tax_rate=tax, dep_years=int(dep_y), debt_pct=debt_pct, debt_rate=debt_rate, debt_tenor=int(debt_ten),
+        debt_kind="anuidade" if debt_kind.startswith("Prest") else "constante", min_dscr=dscr_min or None,
+        equity_rate=eq_rate, variants=vs)
     bar = st.progress(0.0, "A preparar dados de mercado e PV...")
     try:
         st.session_state["result"] = run_project(cfg, progress=lambda f, t: bar.progress(f, t))
@@ -367,7 +391,11 @@ with tab_res:
             "LCOS (EUR/MWh descarregado)": lambda x: "" if pd.isna(x) else f"{x:,.1f}",
             "Estado de saúde no fim (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
             "Augmentation e substituições (EUR)": "{:,.0f}",
-            "Custo nivelado do PV e bateria (EUR/MWh PV)": lambda x: "" if pd.isna(x) else f"{x:,.1f}"}),
+            "Custo nivelado do PV e bateria (EUR/MWh PV)": lambda x: "" if pd.isna(x) else f"{x:,.1f}",
+            "TIR do projeto após impostos": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
+            "TIR do acionista": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
+            "VAL do projeto após impostos (EUR)": "{:,.0f}", "VAL do acionista (EUR)": "{:,.0f}", "Dívida (EUR)": "{:,.0f}",
+            "DSCR mínimo": lambda x: "" if pd.isna(x) else f"{x:.2f}", "DSCR médio": lambda x: "" if pd.isna(x) else f"{x:.2f}"}),
             width="stretch", hide_index=True)
 
         c1, c2 = st.columns(2)
@@ -422,7 +450,74 @@ with tab_res:
         vname_a = st.selectbox("Variante ", [x.variant.name for x in res.variants], key="annual_pick")
         ra = next(x for x in res.variants if x.variant.name == vname_a)
         if ra.annual is not None:
-            st.dataframe(ra.annual.style.format("{:,.0f}", na_rep=""), width="stretch")
+            fmt_a = {c: ("{:.2f}" if c == "DSCR" else "{:.0f}" if c.startswith("Estado") else
+                         "{:.0f}" if c.startswith("Ciclos") else "{:,.0f}") for c in ra.annual.columns}
+            st.dataframe(ra.annual.style.format(fmt_a, na_rep=""), width="stretch")
+        st.subheader("Riscos e sensibilidades")
+        st.caption("Cada fator varia sozinho, com o despacho do caso base. Os outros ficam como no caso base.")
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            vname_s = st.selectbox("Variante  ", [x.variant.name for x in res.variants], key="sens_pick")
+        with c2:
+            s_pct = st.number_input("Variação de receitas e opex (%)", value=20.0, min_value=1.0, max_value=90.0) / 100
+        with c3:
+            c_pct = st.number_input("Variação do capex (%)", value=10.0, min_value=1.0, max_value=90.0) / 100
+        rs = next(x for x in res.variants if x.variant.name == vname_s)
+        if rs.parts is not None:
+            tor = sens.tornado(rs.parts, s_pct, c_pct)
+            b0 = tor.attrs["base_npv"]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(y=tor["Fator"], x=tor["VAL com fator a descer (EUR)"] - b0, base=b0, orientation="h",
+                                 name="Fator a descer", marker_color="#E4572E"))
+            fig.add_trace(go.Bar(y=tor["Fator"], x=tor["VAL com fator a subir (EUR)"] - b0, base=b0, orientation="h",
+                                 name="Fator a subir", marker_color="#2E86AB"))
+            fig.update_layout(barmode="overlay", height=120 + 45 * len(tor), margin=dict(t=60, l=10),
+                              xaxis_title="VAL (EUR)", yaxis=dict(autorange="reversed"),
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            fig.add_vline(x=b0, line_dash="dot")
+            st.plotly_chart(_style(fig), width="stretch")
+            st.dataframe(tor.drop(columns=["Amplitude (EUR)"]).style.format({
+                "VAL com fator a descer (EUR)": "{:,.0f}", "VAL com fator a subir (EUR)": "{:,.0f}",
+                "TIR com fator a descer": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}",
+                "TIR com fator a subir": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"}),
+                width="stretch", hide_index=True)
+
+            st.markdown("**Cenários com preços de anos anteriores (P90 / P50 / P10)**")
+            st.caption("Simula o 1.º ano com os preços de cada um dos últimos anos e sorteia, para cada ano do projeto, "
+                       "um desses anos. P90 é o valor excedido em 90% dos casos (o mais prudente).")
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                n_hist = st.number_input("Anos de preços a usar", value=3, min_value=2, max_value=6, step=1)
+                go_hist = st.button("Correr cenários de preços")
+            key_h = (id(res), int(n_hist))
+            if go_hist:
+                bar_h = st.progress(0.0, "A simular anos de preços...")
+                try:
+                    st.session_state["price_years"] = (key_h, sens.run_price_years(
+                        res.config, int(n_hist), progress=lambda f, t: bar_h.progress(f, t)))
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Os cenários falharam: {e}")
+                bar_h.empty()
+            ph = st.session_state.get("price_years")
+            if ph and ph[0] == key_h:
+                py = ph[1]
+                for f_ in py["failed"]:
+                    st.warning(f"Sem dados para {f_}")
+                mc = sens.monte_carlo(rs.parts, vname_s, py)
+                if mc:
+                    m1, m2, m3 = st.columns(3)
+                    for col_, p_ in zip((m1, m2, m3), ("P90", "P50", "P10")):
+                        t_ = mc[f"{p_} TIR"]
+                        col_.metric(f"{p_} VAL", f"{mc[f'{p_} VAL (EUR)']:,.0f} EUR",
+                                    help=None)
+                        col_.caption(f"TIR {t_:.1%}" if t_ is not None else "TIR n/d")
+                    st.dataframe(mc["por_ano"].style.format({
+                        "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "VAL se todos os anos fossem assim (EUR)": "{:,.0f}",
+                        "TIR": lambda x: "" if x is None or pd.isna(x) else f"{x:.1%}"}), width="stretch", hide_index=True)
+                    fig = px.histogram(x=mc["npvs"], nbins=40, labels={"x": "VAL (EUR)"})
+                    fig.update_layout(height=300, yaxis_title="Casos", margin=dict(t=30))
+                    st.plotly_chart(_style(fig), width="stretch")
+
         if res.audit:
             with st.expander("Auditoria da execução"):
                 st.table(pd.Series(res.audit, name="Valor").astype(str))

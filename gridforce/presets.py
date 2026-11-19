@@ -83,6 +83,12 @@ def config_from_dict(d: dict) -> ProjectConfig:
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
         start_year=int(_f(d, "Ano de início", 2026)), years=int(_f(d, "Duração (anos)", 16)),
         discount_rate=_f(d, "Taxa de desconto (%)", 8.0) / 100, fast=bool(d.get("Modo rápido", True)),
+        tax_rate=_f(d, "Imposto sobre lucros (%)", 0.0) / 100, dep_years=int(_f(d, "Amortização fiscal (anos)", 15)),
+        debt_pct=_f(d, "Dívida (% do capex)", 0.0) / 100, debt_rate=_f(d, "Taxa de juro da dívida (%)", 5.0) / 100,
+        debt_tenor=int(_f(d, "Prazo da dívida (anos)", 10)),
+        debt_kind="constante" if str(d.get("Reembolso", "")).startswith("Amort") else "anuidade",
+        min_dscr=_f(d, "DSCR mínimo", 0.0) or None, equity_rate=_f(d, "Custo do capital próprio (%)", 10.0) / 100,
+        horizon_days=1 if str(d.get("Horizonte do despacho", "Semana")).startswith("Dia") else 7,
         variants=variants)
 
 

@@ -7,7 +7,10 @@ sempre uma série de 15 minutos em hora local (Europe/Lisbon), em EUR/MWh.
 from __future__ import annotations
 
 import datetime as dt
+import io
+import threading
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -17,23 +20,56 @@ import requests
 URL = "https://www.omie.es/es/file-download?parents=marginalpdbcpt&filename=marginalpdbcpt_{d:%Y%m%d}.1"
 
 
-def _fetch_day(day: dt.date, retries: int = 4) -> list[tuple[dt.date, int, float]]:
+YEAR_ZIP = "https://www.omie.es/es/file-download?parents=marginalpdbcpt&filename=marginalpdbcpt_{y}.zip"
+_year_cache: dict[int, dict[str, str]] = {}
+_year_lock = threading.Lock()
+
+
+def _parse_day(day: dt.date, text: str) -> list[tuple[dt.date, int, float]]:
+    rows = []
+    for line in text.splitlines():
+        parts = line.strip().split(";")
+        if len(parts) < 6 or not parts[0].isdigit():
+            continue
+        rows.append((day, int(parts[3]), float(parts[5])))  # coluna 5 = preço PT
+    return rows
+
+
+def _from_year_zip(day: dt.date) -> list[tuple[dt.date, int, float]]:
+    """Os anos já fechados deixam de estar disponíveis dia a dia e passam para um zip anual."""
+    with _year_lock:
+        if day.year not in _year_cache:
+            files = {}
+            try:
+                r = requests.get(YEAR_ZIP.format(y=day.year), timeout=120)
+                if r.content[:2] == b"PK":
+                    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+                        files = {n: z.read(n).decode("latin-1") for n in z.namelist()}
+            except requests.RequestException:
+                pass
+            _year_cache[day.year] = files
+        files = _year_cache[day.year]
+    for n, txt in files.items():
+        if f"_{day:%Y%m%d}." in n:
+            return _parse_day(day, txt)
+    return []
+
+
+def _fetch_day(day: dt.date, retries: int = 4) -> list[tuple[dt.date, int, float]] | None:
     for attempt in range(retries):
         try:
             r = requests.get(URL.format(d=day), timeout=30)
-            r.raise_for_status()
-            rows = []
-            for line in r.text.splitlines():
-                parts = line.strip().split(";")
-                if len(parts) < 6 or not parts[0].isdigit():
-                    continue
-                rows.append((day, int(parts[3]), float(parts[5])))  # coluna 5 = preço PT
+            if r.status_code >= 500:
+                r.raise_for_status()
+            rows = _parse_day(day, r.text) if r.ok else []
             if rows:
                 return rows
+            if r.status_code == 404 or r.text.lstrip().startswith("<"):  # página HTML: o ficheiro diário já não existe
+                return _from_year_zip(day) or None
         except requests.RequestException:
             pass
         time.sleep(2 ** attempt)
-    raise RuntimeError(f"OMIE: falhou o download de {day}")
+    return None  # o chamador preenche o dia em falta com um dia vizinho
 
 
 def _day_to_15min(day: dt.date, rows: list[tuple[dt.date, int, float]]) -> pd.Series:
@@ -63,7 +99,18 @@ def day_ahead_prices(start: dt.date, end: dt.date, cache_dir: Path | str | None 
     days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
     with ThreadPoolExecutor(max_workers=8) as ex:
         results = list(ex.map(_fetch_day, days))
-    s = pd.concat([_day_to_15min(d, r) for d, r in zip(days, results)])
+    missing = [d for d, r in zip(days, results) if not r]
+    if len(missing) > 5:
+        raise RuntimeError(f"OMIE: falhou o download de {len(missing)} dias (ex.: {missing[0]})")
+    ok = [(d, r) for d, r in zip(days, results) if r]
+    if not ok:
+        raise RuntimeError("OMIE: sem dados para o período")
+    filled = []
+    for d, r in zip(days, results):
+        if not r:  # usa o dia válido mais próximo (só os preços, a hora do dia mantém-se)
+            r = min(ok, key=lambda x: abs((x[0] - d).days))[1]
+        filled.append(_day_to_15min(d, r))
+    s = pd.concat(filled)
     if cache is not None:
         s.to_csv(cache)
     return s

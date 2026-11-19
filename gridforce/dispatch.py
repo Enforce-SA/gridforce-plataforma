@@ -207,8 +207,13 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
         if bat.max_cycles_per_day:
             days = n * DT / 24
             for t in range(n):
+                # descarga direta + energia esperada das ativações a subir (aFRR e mFRR)
                 rows.append(r); cols.append(col("dis", t)); vals.append(DT)
-            b_ub.append(bat.max_cycles_per_day * days * bat.energy_kwh * (bat.soc_max - bat.soc_min)); r += 1
+                if afrr:
+                    rows.append(r); cols.append(col("rup", t)); vals.append(mkt.afrr_up_act_rate * mkt.afrr_acceptance * DT)
+                if mfrr:
+                    rows.append(r); cols.append(col("mup", t)); vals.append(mkt.mfrr_up_act_rate * DT)
+            b_ub.append(bat.max_cycles_per_day * days * bat.energy_kwh); r += 1
     A_ub = sp.csr_matrix((vals, (rows, cols)), shape=(r, nv)) if r else None
 
     res = linprog(c, A_ub=A_ub, b_ub=np.array(b_ub) if r else None, A_eq=A_eq, b_eq=np.array(b_eq),

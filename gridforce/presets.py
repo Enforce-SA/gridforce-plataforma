@@ -54,6 +54,7 @@ def config_from_dict(d: dict) -> ProjectConfig:
         bess_rte=_f(d, "Eficiência round-trip (%)", 88.0) / 100, bess_soc_min=soc[0] / 100, bess_soc_max=soc[1] / 100,
         bess_degradation_yr=_f(d, "Perda de capacidade anual (%)", 2.0) / 100,
         bess_wear_eur_mwh=_f(d, "Custo de desgaste (EUR/MWh descarregado)", 5.0),
+        bess_max_cycles_day=_f(d, "Máximo de ciclos por dia (0 = sem limite)", 2.0) or None,
         bess_capex_eur_kwh=_f(d, "Capex bateria (EUR/kWh)", 509.05),
         bess_opex_eur_kwh_yr=_f(d, "Opex bateria (EUR/kWh/ano)", 0.0),
         arbitrage=bool(d.get("Arbitragem", True)), afrr=bool(d.get("aFRR", False)),

@@ -63,6 +63,7 @@ class ProjectConfig:
     bess_soc_max: float = 0.95
     bess_degradation_yr: float = 0.02
     bess_wear_eur_mwh: float = 5.0
+    bess_max_cycles_day: float | None = None  # limite de ciclos completos por dia (média na janela)
     bess_capex_eur_kwh: float = 509.05
     bess_opex_eur_kwh_yr: float = 0.0
     # custos do projeto (além dos custos por kWp/kWh)
@@ -182,7 +183,8 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             if v.bess_kwh > 0 and v.bess_kw > 0:
                 bat = Battery(v.bess_kwh * (1 - cfg.bess_degradation_yr) ** y, v.bess_kw, rte=cfg.bess_rte,
                               soc_min=cfg.bess_soc_min, soc_max=cfg.bess_soc_max,
-                              degradation_eur_mwh=cfg.bess_wear_eur_mwh)
+                              degradation_eur_mwh=cfg.bess_wear_eur_mwh,
+                              max_cycles_per_day=cfg.bess_max_cycles_day or None)
             site_y = site
             if cfg.ppa_price_eur_mwh is not None:
                 site_y = replace(site, ppa_price_eur_mwh=cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * y)

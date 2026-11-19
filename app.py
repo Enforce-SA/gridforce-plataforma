@@ -186,6 +186,9 @@ with tab_tech:
         soc_min, soc_max = st.slider("Janela de SOC (%)", 0, 100, tuple(P("Janela de SOC (%)", (5, 95))))
         b_deg = st.number_input("Perda de capacidade anual (%)", value=P("Perda de capacidade anual (%)", 2.0)) / 100
         wear = st.number_input("Custo de desgaste (EUR/MWh descarregado)", value=P("Custo de desgaste (EUR/MWh descarregado)", 5.0))
+        max_cyc = st.number_input("Máximo de ciclos por dia (0 = sem limite)", value=P("Máximo de ciclos por dia (0 = sem limite)", 2.0),
+                                  min_value=0.0, help="Média por semana, contando também a energia das ativações aFRR/mFRR. "
+                                                      "Garantias típicas: 1 a 2 ciclos por dia.")
         b_capex = st.number_input("Capex bateria (EUR/kWh)", value=P("Capex bateria (EUR/kWh)", 509.05))
         b_opex = st.number_input("Opex bateria (EUR/kWh/ano)", value=P("Opex bateria (EUR/kWh/ano)", 0.0))
 
@@ -264,7 +267,7 @@ if run:
         pv_tilt=tilt, pv_azimuth=az, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
         pv_capex_eur_kwp=pv_capex, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
-        bess_wear_eur_mwh=wear, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
+        bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
         arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc,
         intraday=intra, intraday_capture=capt, mfrr=mfrr, mfrr_up_act_rate=m_up, mfrr_dn_act_rate=m_dn,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,

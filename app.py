@@ -56,11 +56,11 @@ st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True
 st.caption("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercado diário OMIE e serviços de sistema.")
 
 DEFAULT_VARIANTS = pd.DataFrame([
-    {"Variante": "PV 700 kW + 2 MWh", "PV (kWp)": 700, "BESS (kWh)": 2000, "BESS (kW)": 1000},
-    {"Variante": "PV 1 MW + 2 MWh", "PV (kWp)": 1000, "BESS (kWh)": 2000, "BESS (kW)": 1000},
-    {"Variante": "PV 2 MW + 2 MWh", "PV (kWp)": 2000, "BESS (kWh)": 2000, "BESS (kW)": 1000},
-    {"Variante": "Só PV 1 MW", "PV (kWp)": 1000, "BESS (kWh)": 0, "BESS (kW)": 0},
-])
+    {"Variante": "PV 700 kW + 2 MWh", "PV (kWp)": 700, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
+    {"Variante": "PV 1 MW + 2 MWh", "PV (kWp)": 1000, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
+    {"Variante": "PV 2 MW + 2 MWh", "PV (kWp)": 2000, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
+    {"Variante": "Só PV 1 MW", "PV (kWp)": 1000, "BESS (kWh)": 0, "BESS (kW)": 0, "Capex total (EUR)": None},
+]).astype({"Capex total (EUR)": float})
 
 tab_site, tab_tech, tab_mkt, tab_var, tab_res = st.tabs(
     ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"])
@@ -72,11 +72,14 @@ with tab_site:
         lat = st.number_input("Latitude", value=38.96, format="%.4f")
         lon = st.number_input("Longitude", value=-9.33, format="%.4f")
     with c2:
-        load_mode = st.radio("Consumo do local", ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CSV)"])
+        load_mode = st.radio("Consumo do local", ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CSV)",
+                                                  "Sem consumo (parque de produção e armazenamento)"])
         load_kw = None
         annual = st.number_input("Consumo anual (MWh)", value=4666.4, min_value=0.0,
                                  disabled=load_mode != "Perfil tipo de centro comercial")
-        if load_mode != "Perfil tipo de centro comercial":
+        if load_mode.startswith("Sem consumo"):
+            annual = 0.0
+        elif load_mode != "Perfil tipo de centro comercial":
             f = st.file_uploader("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)",
                                  type=["csv"])
             if f is not None:
@@ -129,27 +132,46 @@ with tab_mkt:
         extra = st.number_input("Outros custos na compra (EUR/MWh)", value=0.0,
                                 help="Margem do comercializador, CIEG, imposto especial de consumo, etc.")
         fee = st.number_input("Comissão na venda (EUR/MWh)", value=0.0)
+        sale = st.radio("Venda da energia PV injetada", ["Mercado diário OMIE", "Preço fixo (PPA)"],
+                        help="Com preço fixo, a energia PV injetada diretamente é paga a esse preço; a bateria "
+                             "continua a vender no mercado.")
+        ppa = st.number_input("Preço fixo no 1.º ano (EUR/MWh)", value=45.9, disabled=sale != "Preço fixo (PPA)")
+        ppa_esc = st.number_input("Aumento anual do preço fixo (EUR/MWh por ano)", value=0.9,
+                                  disabled=sale != "Preço fixo (PPA)")
     with c3:
         st.subheader("Finanças")
         start_year = st.number_input("Ano de início", value=2026, step=1)
         years = st.number_input("Duração (anos)", value=16, step=1, min_value=1)
         disc = st.number_input("Taxa de desconto (%)", value=8.0) / 100
         fast = st.checkbox("Modo rápido (simula 1.º e último ano e interpola)", True)
+        st.subheader("Outros custos do projeto")
+        other_capex = st.number_input("Capex adicional (EUR)", value=0.0, min_value=0.0,
+                                      help="Licenciamento, ligação à rede, desenvolvimento...")
+        om = st.number_input("O&M no 1.º ano (EUR/ano)", value=0.0, min_value=0.0)
+        om_esc = st.number_input("Crescimento anual do O&M (%)", value=2.0) / 100
+        ins = st.number_input("Seguro no 1.º ano (EUR/ano)", value=0.0, min_value=0.0)
+        ins_chg = st.number_input("Variação anual do seguro (% do valor inicial)", value=0.0,
+                                  help="Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.") / 100
 
 with tab_var:
-    st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade.")
+    st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
+             "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh.")
     variants_df = st.data_editor(DEFAULT_VARIANTS, num_rows="dynamic", width="stretch", key="variants")
 
 run = st.button("Correr simulação", type="primary")
 
 if run:
-    vs = [Variant(str(r["Variante"]), float(r["PV (kWp)"] or 0), float(r["BESS (kWh)"] or 0), float(r["BESS (kW)"] or 0))
+    vs = [Variant(str(r["Variante"]), float(r["PV (kWp)"] or 0), float(r["BESS (kWh)"] or 0), float(r["BESS (kW)"] or 0),
+                  capex_eur=None if pd.isna(r.get("Capex total (EUR)")) else float(r["Capex total (EUR)"]))
           for _, r in variants_df.dropna(subset=["Variante"]).iterrows()]
     cfg = ProjectConfig(
         name=name, lat=lat, lon=lon, annual_load_mwh=annual, load_kw=load_kw,
         voltage_level=None if lvl.startswith("Sem") else lvl,
         import_limit_kw=imp_lim or 1e6, export_limit_kw=exp_lim or 1e6,
         extra_import_eur_mwh=extra, export_fee_eur_mwh=fee,
+        ppa_price_eur_mwh=ppa if sale == "Preço fixo (PPA)" else None, ppa_escalation_eur_mwh_yr=ppa_esc,
+        other_capex_eur=other_capex, om_eur_yr=om, om_escalation_yr=om_esc, insurance_eur_yr=ins,
+        insurance_change_yr=ins_chg,
         pv_tilt=tilt, pv_azimuth=az, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
         pv_capex_eur_kwp=pv_capex, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
@@ -184,7 +206,7 @@ with tab_res:
             "Capex (EUR)": "{:,.0f}", "Opex (EUR/ano)": "{:,.0f}", "VAL (EUR)": "{:,.0f}",
             "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
             "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}",
-            "Poupança 1.º ano (EUR)": "{:,.0f}", "Autoconsumo PV (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
+            "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "Autoconsumo PV (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
             "Importação 1.º ano (MWh)": "{:,.0f}"}), width="stretch", hide_index=True)
 
         c1, c2 = st.columns(2)
@@ -223,7 +245,9 @@ with tab_res:
             fig.add_trace(go.Scatter(x=d.index, y=d.load, name="Consumo", line=dict(color=BRAND["text"], width=2)))
             fig.add_trace(go.Bar(x=d.index, y=d.pv, name="PV usado"))
             fig.add_trace(go.Bar(x=d.index, y=d.dis - d.ch, name="Bateria (+descarga / -carga)"))
-            fig.add_trace(go.Bar(x=d.index, y=d.imp - d.exp, name="Rede (+import / -export)"))
+            fig.add_trace(go.Bar(x=d.index, y=d.imp - d.exp, name="Rede, mercado (+import / -export)"))
+            if d.xpv.sum() > 0:
+                fig.add_trace(go.Bar(x=d.index, y=-d.xpv, name="Rede, PV a preço fixo"))
             if d.rup.sum() + d.rdn.sum() > 0:
                 fig.add_trace(go.Scatter(x=d.index, y=d.rup, name="Reserva aFRR subir", line=dict(dash="dot")))
             fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name="Preço OMIE (EUR/MWh)", yaxis="y2",

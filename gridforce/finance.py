@@ -29,6 +29,7 @@ def annual_streams(df: pd.DataFrame, import_adder: float = 0.0, export_fee: floa
     mwh = DT / 1000.0
     s = {
         "Mercado diário - venda (export)": float((df.exp * (df.da_price - export_fee)).sum() * mwh),
+        "Venda PV a preço fixo (PPA)": float((df.xpv * (df.ppa_price - export_fee)).sum() * mwh) if "xpv" in df else 0.0,
         "Mercado diário - compra (import)": float(-(df.imp * df.da_price).sum() * mwh),
         "Tarifas de acesso - energia e potência em ponta": float(-(df.imp * df.adder).sum() * mwh) if "adder" in df else 0.0,
         "aFRR subir - capacidade": float((df.rup * df.up_cap).sum() * mwh),
@@ -49,7 +50,8 @@ def annual_energy(df: pd.DataFrame) -> dict[str, float]:
         "PV cortado (MWh)": float((df.pv_avail - df.pv).sum() * mwh),
         "PV direto para consumo (MWh)": float(pv_to_load.sum() * mwh),
         "Importação (MWh)": float(df.imp.sum() * mwh),
-        "Exportação (MWh)": float(df.exp.sum() * mwh),
+        "Exportação (MWh)": float((df.exp + (df.xpv if "xpv" in df else 0)).sum() * mwh),
+        "Exportação PV a preço fixo (MWh)": float(df.xpv.sum() * mwh) if "xpv" in df else 0.0,
         "Carga bateria (MWh)": float(df.ch.sum() * mwh),
         "Descarga bateria (MWh)": float(df.dis.sum() * mwh),
         "aFRR subir médio (MW)": float(df.rup.mean() / 1000),
@@ -71,11 +73,14 @@ def irr(cf: np.ndarray) -> float | None:
     return (lo + hi) / 2
 
 
-def investment_case(yearly_net_vs_baseline: list[float], capex: float, opex_yr: float,
+def investment_case(yearly_net_vs_baseline: list[float], capex: float, opex_yr: float | list[float],
                     discount_rate: float, start_year: int) -> dict:
-    """Cashflow do projeto face ao cenário base (sem ativos). Capex no ano 0."""
+    """Cashflow do projeto face ao cenário base (sem ativos). Capex no ano 0.
+
+    opex_yr pode ser um valor fixo ou uma lista com o opex de cada ano."""
     years = len(yearly_net_vs_baseline)
-    cf = np.array([-capex] + [v - opex_yr for v in yearly_net_vs_baseline])
+    opex = np.broadcast_to(np.asarray(opex_yr, dtype=float), (years,))
+    cf = np.array([-capex] + [v - o for v, o in zip(yearly_net_vs_baseline, opex)])
     disc = cf / (1 + discount_rate) ** np.arange(years + 1)
     cum = np.cumsum(cf)
     payback = None

@@ -42,6 +42,9 @@ class Site:
     export_limit_kw: float = 1e6
     import_adder_eur_mwh: float | np.ndarray = 0.0   # tarifas de acesso, taxas, margem (escalar ou série)
     export_fee_eur_mwh: float = 0.0     # comissão do agregador/representante
+    # Preço fixo para a energia PV injetada diretamente (PPA / contrato de venda). Se definido,
+    # a injeção PV direta é paga a este preço e a venda em mercado (OMIE) fica só para a bateria.
+    ppa_price_eur_mwh: float | None = None
 
 
 @dataclass
@@ -72,7 +75,9 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     has_bat = bat is not None and bat.energy_kwh > 0 and bat.power_kw > 0
     afrr = has_bat and mkt.enable_afrr and mkt.afrr_up_cap is not None
     # variáveis: pv_used, imp, exp, ch, dis, soc, r_up, r_dn
-    names = ["pv", "imp", "exp"] + (["ch", "dis", "soc"] if has_bat else []) + (["rup", "rdn"] if afrr else [])
+    ppa = site.ppa_price_eur_mwh is not None
+    names = (["pv", "imp", "exp"] + (["xpv"] if ppa else []) + (["ch", "dis", "soc"] if has_bat else [])
+             + (["rup", "rdn"] if afrr else []))
     k = {nm: i for i, nm in enumerate(names)}
     nv = len(names) * n
 
@@ -83,7 +88,9 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     ub = np.full(nv, np.inf)
     ub[k["pv"] * n:(k["pv"] + 1) * n] = pv
     ub[k["imp"] * n:(k["imp"] + 1) * n] = site.import_limit_kw
-    ub[k["exp"] * n:(k["exp"] + 1) * n] = site.export_limit_kw
+    ub[k["exp"] * n:(k["exp"] + 1) * n] = site.export_limit_kw if (has_bat or not ppa) else 0.0
+    if ppa:
+        ub[k["xpv"] * n:(k["xpv"] + 1) * n] = np.minimum(pv, site.export_limit_kw)
     if has_bat:
         for nm in ("ch", "dis"):
             ub[k[nm] * n:(k[nm] + 1) * n] = bat.power_kw
@@ -99,6 +106,8 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     c[k["imp"] * n:(k["imp"] + 1) * n] = (mk["da"] + mk["adder"]) * e
     c[k["exp"] * n:(k["exp"] + 1) * n] = -(mk["da"] - site.export_fee_eur_mwh) * e
     c[k["pv"] * n:(k["pv"] + 1) * n] = -1e-6  # preferir usar PV a cortar
+    if ppa:
+        c[k["xpv"] * n:(k["xpv"] + 1) * n] = -(site.ppa_price_eur_mwh - site.export_fee_eur_mwh) * e
     if has_bat:
         c[k["dis"] * n:(k["dis"] + 1) * n] = bat.degradation_eur_mwh * e
     if afrr:
@@ -111,7 +120,8 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     r = 0
     # balanço: pv + imp + dis - exp - ch = load
     for t in range(n):
-        for nm, s in (("pv", 1), ("imp", 1), ("exp", -1)) + ((("dis", 1), ("ch", -1)) if has_bat else ()):
+        for nm, s in (("pv", 1), ("imp", 1), ("exp", -1)) + ((("xpv", -1),) if ppa else ()) + (
+                (("dis", 1), ("ch", -1)) if has_bat else ()):
             rows.append(r); cols.append(col(nm, t)); vals.append(s)
         b_eq.append(load[t]); r += 1
     if has_bat:
@@ -135,6 +145,15 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
 
     rows, cols, vals, b_ub = [], [], [], []
     r = 0
+    if ppa:
+        for t in range(n):
+            # injeção PV direta <= PV produzido; injeção total <= limite da ligação
+            rows += [r, r]; cols += [col("xpv", t), col("pv", t)]; vals += [1, -1]; b_ub.append(0.0); r += 1
+            rows += [r, r]; cols += [col("xpv", t), col("exp", t)]; vals += [1, 1]
+            b_ub.append(site.export_limit_kw); r += 1
+            if has_bat:
+                # a venda em mercado vem só da bateria
+                rows += [r, r]; cols += [col("exp", t), col("dis", t)]; vals += [1, -1]; b_ub.append(0.0); r += 1
     if has_bat:
         for t in range(n):
             # margem de potência: dis - ch + rup <= P  e  ch - dis + rdn <= P
@@ -201,7 +220,8 @@ def simulate_year(index: pd.DatetimeIndex, load_kw: np.ndarray, pv_kw: np.ndarra
     df["da_price"] = mkt.day_ahead
     for nm in ("up_cap", "dn_cap", "up_act", "dn_act", "adder"):
         df[nm] = series[nm]
-    for nm in ("ch", "dis", "soc", "rup", "rdn"):
+    df["ppa_price"] = site.ppa_price_eur_mwh or 0.0
+    for nm in ("xpv", "ch", "dis", "soc", "rup", "rdn"):
         if nm not in df:
             df[nm] = 0.0
     return DispatchResult(df=df, objective_eur=-total, status=msgs)

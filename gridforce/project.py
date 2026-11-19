@@ -7,7 +7,7 @@ por variante e ano, e devolve métricas, cashflows e séries para gráficos.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +29,7 @@ class Variant:
     pv_kwp: float
     bess_kwh: float
     bess_kw: float
+    capex_eur: float | None = None    # capex total da variante (substitui o cálculo por kWp/kWh)
 
 
 @dataclass
@@ -45,6 +46,9 @@ class ProjectConfig:
     export_limit_kw: float = 1e6
     extra_import_eur_mwh: float = 0.0         # margem do comercializador, CIEG, IEC...
     export_fee_eur_mwh: float = 0.0
+    # venda da energia PV injetada a preço fixo (PPA); None = tudo a preço OMIE
+    ppa_price_eur_mwh: float | None = None
+    ppa_escalation_eur_mwh_yr: float = 0.0    # aumento linear por ano (ex.: 45,9 -> 46,8 -> ...)
     # PV
     pv_tilt: float = 10.0
     pv_azimuth: float = 180.0
@@ -61,6 +65,12 @@ class ProjectConfig:
     bess_wear_eur_mwh: float = 5.0
     bess_capex_eur_kwh: float = 509.05
     bess_opex_eur_kwh_yr: float = 0.0
+    # custos do projeto (além dos custos por kWp/kWh)
+    other_capex_eur: float = 0.0              # licenciamento, ligação à rede, etc.
+    om_eur_yr: float = 0.0                    # O&M fixo no 1.º ano
+    om_escalation_yr: float = 0.0             # crescimento composto anual do O&M
+    insurance_eur_yr: float = 0.0             # seguro no 1.º ano
+    insurance_change_yr: float = 0.0          # variação linear anual, em % do valor inicial (ex.: -0.0212)
     # mercados
     arbitrage: bool = True
     afrr: bool = False
@@ -101,6 +111,8 @@ def _inputs(cfg: ProjectConfig):
                                           loss_pct=cfg.pv_loss_pct, cache_dir=CACHE), idx)
     if cfg.load_kw is not None:
         load = np.resize(np.asarray(cfg.load_kw, dtype=float), len(idx))
+    elif cfg.annual_load_mwh <= 0:  # parque sem consumo (só produção e armazenamento)
+        load = np.zeros(len(idx))
     else:
         load = shopping_centre(idx, cfg.annual_load_mwh)
     afrr = None
@@ -118,7 +130,8 @@ def _inputs(cfg: ProjectConfig):
     tar = TAR_2026.get(cfg.voltage_level) if cfg.voltage_level else None
     adder = (import_adder_eur_mwh(idx, tar) if tar else np.zeros(len(idx))) + cfg.extra_import_eur_mwh
     site = Site(import_limit_kw=cfg.import_limit_kw, export_limit_kw=cfg.export_limit_kw,
-                import_adder_eur_mwh=adder, export_fee_eur_mwh=cfg.export_fee_eur_mwh)
+                import_adder_eur_mwh=adder, export_fee_eur_mwh=cfg.export_fee_eur_mwh,
+                ppa_price_eur_mwh=cfg.ppa_price_eur_mwh)
     return idx, pv1, load, mkt, site, tar
 
 
@@ -148,7 +161,10 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
                 bat = Battery(v.bess_kwh * (1 - cfg.bess_degradation_yr) ** y, v.bess_kw, rte=cfg.bess_rte,
                               soc_min=cfg.bess_soc_min, soc_max=cfg.bess_soc_max,
                               degradation_eur_mwh=cfg.bess_wear_eur_mwh)
-            res = simulate_year(idx, load, pv, mkt, bat, site)
+            site_y = site
+            if cfg.ppa_price_eur_mwh is not None:
+                site_y = replace(site, ppa_price_eur_mwh=cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * y)
+            res = simulate_year(idx, load, pv, mkt, bat, site_y)
             per_year[y] = streams(res.df)
             if y == 0:
                 d1 = res.df
@@ -159,16 +175,21 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
         ys = ys.reindex(range(cfg.years)).interpolate(method="index")
         ys.index = [cfg.start_year + i for i in ys.index]
         net_vs_base = (ys.sum(axis=1) - base_net).tolist()
-        capex = v.pv_kwp * cfg.pv_capex_eur_kwp + v.bess_kwh * cfg.bess_capex_eur_kwh
-        opex = v.pv_kwp * cfg.pv_opex_eur_kwp_yr + v.bess_kwh * cfg.bess_opex_eur_kwh_yr
-        ic = investment_case(net_vs_base, capex, opex, cfg.discount_rate, cfg.start_year)
+        capex = (v.capex_eur if v.capex_eur is not None
+                 else v.pv_kwp * cfg.pv_capex_eur_kwp + v.bess_kwh * cfg.bess_capex_eur_kwh) + cfg.other_capex_eur
+        yrs = np.arange(cfg.years)
+        opex_y = (v.pv_kwp * cfg.pv_opex_eur_kwp_yr + v.bess_kwh * cfg.bess_opex_eur_kwh_yr
+                  + cfg.om_eur_yr * (1 + cfg.om_escalation_yr) ** yrs
+                  + np.maximum(cfg.insurance_eur_yr * (1 + cfg.insurance_change_yr * yrs), 0.0))
+        opex = float(opex_y[0])
+        ic = investment_case(net_vs_base, capex, opex_y, cfg.discount_rate, cfg.start_year)
         e1 = annual_energy(d1)
         metrics = {
             "Variante": v.name, "PV (kWp)": v.pv_kwp, "BESS (kWh)": v.bess_kwh, "BESS (kW)": v.bess_kw,
             "Capex (EUR)": capex, "Opex (EUR/ano)": opex, "VAL (EUR)": ic["npv"], "TIR": ic["irr"],
-            "Payback (anos)": ic["payback_years"], "Poupança 1.º ano (EUR)": net_vs_base[0],
+            "Payback (anos)": ic["payback_years"], "Ganho 1.º ano face à base (EUR)": net_vs_base[0],
             "Autoconsumo PV (%)": 100 * (e1["PV usado (MWh)"] - e1["Exportação (MWh)"]) / max(e1["PV disponível (MWh)"], 1e-9)
-            if v.pv_kwp else None,
+            if v.pv_kwp and e1["Consumo (MWh)"] > 0 else None,
             "Importação 1.º ano (MWh)": e1["Importação (MWh)"],
         }
         results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1))

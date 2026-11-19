@@ -138,7 +138,7 @@ with tab_mkt:
 
 with tab_var:
     st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade.")
-    variants_df = st.data_editor(DEFAULT_VARIANTS, num_rows="dynamic", use_container_width=True, key="variants")
+    variants_df = st.data_editor(DEFAULT_VARIANTS, num_rows="dynamic", width="stretch", key="variants")
 
 run = st.button("Correr simulação", type="primary")
 
@@ -185,7 +185,7 @@ with tab_res:
             "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
             "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}",
             "Poupança 1.º ano (EUR)": "{:,.0f}", "Autoconsumo PV (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
-            "Importação 1.º ano (MWh)": "{:,.0f}"}), use_container_width=True, hide_index=True)
+            "Importação 1.º ano (MWh)": "{:,.0f}"}), width="stretch", hide_index=True)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -198,7 +198,7 @@ with tab_res:
                         rows.append({"Variante": r.variant.name, "Fonte de valor": k, "EUR": delta})
             fig = px.bar(pd.DataFrame(rows), x="Variante", y="EUR", color="Fonte de valor", barmode="relative")
             fig.update_layout(legend=dict(orientation="h", y=-0.3), height=460, margin=dict(t=10))
-            st.plotly_chart(_style(fig), use_container_width=True)
+            st.plotly_chart(_style(fig), width="stretch")
         with c2:
             st.subheader("Cashflow descontado acumulado")
             fig = go.Figure()
@@ -208,7 +208,7 @@ with tab_res:
                 fig.add_trace(go.Scatter(x=cf.index, y=disc_cf.cumsum(), mode="lines", name=r.variant.name))
             fig.add_hline(y=0, line_dash="dot")
             fig.update_layout(height=460, margin=dict(t=10), yaxis_title="EUR", legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(_style(fig), use_container_width=True)
+            st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader("Despacho num dia")
         c1, c2 = st.columns([1, 3])
@@ -231,11 +231,11 @@ with tab_res:
             fig.update_layout(barmode="relative", height=420, margin=dict(t=10), yaxis_title="kW",
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
                               legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(_style(fig), use_container_width=True)
+            st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader("Energia no 1.º ano")
         en = pd.DataFrame({"Base": res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})
-        st.dataframe(en.style.format("{:,.1f}"), use_container_width=True)
+        st.dataframe(en.style.format("{:,.1f}"), width="stretch")
 
         buf = io.BytesIO()
         to_excel(res, buf)

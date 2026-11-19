@@ -3,6 +3,10 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## Próxima versão (em teste em Qualidade)
+- Contentor Docker e publicação automática da imagem, para alojamento próprio no Azure.
+- "Perfil tipo de centro comercial" passa a chamar-se "Perfil tipo C&I" (os projetos guardados continuam a abrir).
+
 ## 0.8.0 (2026-11-19)
 - Biblioteca de projetos partilhada (repositório privado), com guardar, abrir, apagar e "Selecionar todos".
 - Botões "Guardar projeto na biblioteca" e "Descarregar projeto (.json)", incluindo diagrama de carga.

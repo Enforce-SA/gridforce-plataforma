@@ -21,8 +21,10 @@ def set_lang(lang: str) -> None:
 
 def T(s):
     """Traduz um texto (ou devolve-o como está se não houver tradução ou se a língua for português)."""
-    if LANG == "pt" or not isinstance(s, str):
+    if not isinstance(s, str):
         return s
+    if LANG == "pt":
+        return PT.get(s, s)
     if s in EN:
         return EN[s]
     # "Nome: detalhe" (ex.: chaves de auditoria com o nome da variante)
@@ -84,6 +86,12 @@ def translate_xlsx(data: bytes) -> bytes:
     return out.getvalue()
 
 
+# Nomes mostrados em português diferentes do valor guardado nos projetos (o valor guardado não muda,
+# para os projetos antigos continuarem a abrir)
+PT = {
+    "Perfil tipo de centro comercial": "Perfil tipo C&I",
+}
+
 EN = {
     # ambientes e versões
     "Palavra-passe": "Password", "Palavra-passe errada.": "Wrong password.",
@@ -125,7 +133,7 @@ EN = {
     "5. Resultados": "5. Results",
     # separador 1
     "Nome do projeto": "Project name", "Latitude": "Latitude", "Longitude": "Longitude",
-    "Consumo do local": "Site load", "Perfil tipo de centro comercial": "Typical shopping centre profile",
+    "Consumo do local": "Site load", "Perfil tipo de centro comercial": "Typical C&I profile",
     "Carregar diagrama de carga (CSV)": "Upload load profile (CSV)",
     "Sem consumo (parque de produção e armazenamento)": "No load (generation and storage park)",
     "Consumo anual (MWh)": "Annual consumption (MWh)",

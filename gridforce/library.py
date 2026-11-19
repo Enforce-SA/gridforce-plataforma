@@ -6,6 +6,7 @@ segredos do Streamlit (ou variáveis de ambiente):
 
     GRIDFORCE_LIB_TOKEN = "github_pat_..."     # token com acesso de leitura e escrita a "Contents"
     GRIDFORCE_LIB_REPO  = "Enforce-SA/gridforce-projetos"   # opcional
+    GRIDFORCE_LIB_FOLDER = "projetos_qualidade"              # opcional (ambiente de Qualidade)
 
 Sem token, a biblioteca usa uma pasta local (só dura até a aplicação reiniciar).
 """
@@ -20,7 +21,7 @@ from pathlib import Path
 import requests
 
 DEFAULT_REPO = "Enforce-SA/gridforce-projetos"
-FOLDER = "projetos"
+FOLDER = "projetos"  # o ambiente de Qualidade usa outra pasta (GRIDFORCE_LIB_FOLDER)
 LOCAL = Path(__file__).resolve().parent.parent / "biblioteca"
 API = "https://api.github.com"
 
@@ -37,6 +38,8 @@ def _secret(name: str) -> str | None:
 
 
 def _cfg():
+    global FOLDER
+    FOLDER = _secret("GRIDFORCE_LIB_FOLDER") or "projetos"
     return _secret("GRIDFORCE_LIB_TOKEN"), _secret("GRIDFORCE_LIB_REPO") or DEFAULT_REPO
 
 

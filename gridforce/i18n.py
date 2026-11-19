@@ -85,6 +85,11 @@ def translate_xlsx(data: bytes) -> bytes:
 
 
 EN = {
+    # ambientes e versões
+    "Palavra-passe": "Password", "Palavra-passe errada.": "Wrong password.",
+    "AMBIENTE DE QUALIDADE (testes). Os resultados e projetos daqui não são os de Produção.":
+        "QUALITY ENVIRONMENT (testing). Results and projects here are not the Production ones.",
+    "Qualidade": "Quality", "Produção": "Production", "Histórico de versões": "Version history",
     # cabeçalho e biblioteca
     "Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR).":
         "Sizing and simulation of PV and batteries in Portugal: self-consumption, OMIE day-ahead and intraday markets and balancing services (aFRR, mFRR).",

@@ -23,16 +23,18 @@ import gridforce.presets
 import gridforce.sensitivity
 import gridforce.library
 import gridforce.i18n
+import gridforce.version
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
 # pode manter a versão antiga dos módulos em memória.
 for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets,
-           gridforce.sensitivity, gridforce.library, gridforce.i18n):
+           gridforce.version, gridforce.sensitivity, gridforce.library, gridforce.i18n):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 from gridforce import sensitivity as sens
 from gridforce import library as lib
+from gridforce.version import VERSION, DATE as VERSION_DATE
 from gridforce.i18n import T, TD, TF, TP, set_lang, translate_xlsx
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
@@ -82,7 +84,33 @@ _logo = Path(__file__).parent / "assets" / "enforce_logo.png"
 if _logo.exists():
     with _c_logo:
         st.image(str(_logo), width=220)
+def _secret(name, default=None):
+    import os
+    v = os.environ.get(name)
+    if v:
+        return v
+    try:
+        return st.secrets.get(name, default)
+    except Exception:  # noqa: BLE001
+        return default
+
+
+QA = str(_secret("GRIDFORCE_ENV", "producao")).lower().startswith(("q", "test"))
+
+# Palavra-passe opcional (usada no ambiente de Qualidade, se a app for pública)
+_pw = _secret("APP_PASSWORD")
+if _pw and not st.session_state.get("auth_ok"):
+    _typed = st.text_input(T("Palavra-passe"), type="password")
+    if _typed == _pw:
+        st.session_state["auth_ok"] = True
+        st.rerun()
+    if _typed:
+        st.error(T("Palavra-passe errada."))
+    st.stop()
+
 st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True)
+if QA:
+    st.warning(T("AMBIENTE DE QUALIDADE (testes). Os resultados e projetos daqui não são os de Produção."), icon="🧪")
 st.caption(T("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR)."))
 
 DEFAULT_VARIANTS = pd.DataFrame([
@@ -651,3 +679,13 @@ with tab_res:
         st.download_button(T("Descarregar investment case (Excel)"), translate_xlsx(buf.getvalue()),
                            file_name=f"{res.config.name}_investment_case.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+st.divider()
+_cv1, _cv2 = st.columns([1, 3])
+with _cv1:
+    st.caption(f"GridForce v{VERSION} ({VERSION_DATE}) · {T('Qualidade') if QA else T('Produção')}")
+with _cv2:
+    with st.expander(T("Histórico de versões")):
+        _cl = Path(__file__).parent / "CHANGELOG.md"
+        if _cl.exists():
+            st.markdown(_cl.read_text(encoding="utf-8").split("\n", 1)[1])

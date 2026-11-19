@@ -21,7 +21,8 @@ from .finance import financing, annual_energy, annual_streams, investment_case
 from .tariffs import TAR_2026, contracted_power_cost, import_adder_eur_mwh
 
 CACHE = Path(__file__).resolve().parent.parent / "cache"
-ENGINE_VERSION = "GridForce 0.7 (2026-11-19)"
+from .version import VERSION as _V, DATE as _D
+ENGINE_VERSION = f"GridForce {_V} ({_D})"
 
 
 @dataclass

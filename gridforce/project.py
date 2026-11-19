@@ -76,6 +76,7 @@ class ProjectConfig:
     afrr: bool = False
     afrr_act_rate: float = 0.10
     afrr_duration_h: float = 1.0
+    afrr_acceptance: float = 1.0              # fração das horas com oferta aceite (GridCog: 0,5)
     prices_start: dt.date = dt.date(2025, 10, 1)
     prices_end: dt.date = dt.date(2026, 9, 30)
     # financeiro
@@ -125,6 +126,7 @@ def _inputs(cfg: ProjectConfig):
                   afrr_up_act_price=None if afrr is None else afrr.up_act.values,
                   afrr_dn_act_price=None if afrr is None else afrr.dn_act.values,
                   afrr_up_act_rate=cfg.afrr_act_rate, afrr_dn_act_rate=cfg.afrr_act_rate,
+                  afrr_acceptance=cfg.afrr_acceptance,
                   reserve_duration_h=cfg.afrr_duration_h,
                   enable_afrr=afrr is not None, enable_arbitrage=cfg.arbitrage)
     tar = TAR_2026.get(cfg.voltage_level) if cfg.voltage_level else None
@@ -140,7 +142,8 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
 
     def streams(df):
         st = annual_streams(df, export_fee=cfg.export_fee_eur_mwh,
-                            act_up=mkt.afrr_up_act_rate, act_dn=mkt.afrr_dn_act_rate)
+                            act_up=mkt.afrr_up_act_rate, act_dn=mkt.afrr_dn_act_rate,
+                            acceptance=mkt.afrr_acceptance)
         st["Tarifas de acesso - potência contratada"] = -contracted_power_cost(df.imp.values, tar) if tar else 0.0
         return st
 

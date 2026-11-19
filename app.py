@@ -178,6 +178,8 @@ with tab_mkt:
                            help="Precisa da chave ENTSO-E (variável ENTSOE_TOKEN).")
         act = st.number_input("Taxa de ativação aFRR (%)", value=P("Taxa de ativação aFRR (%)", 10.0)) / 100
         dur = st.number_input("Duração mínima da reserva (h)", value=P("Duração mínima da reserva (h)", 1.0))
+        acc = st.number_input("Ofertas aceites (%)", value=P("Ofertas aceites (%)", 100.0), min_value=0.0, max_value=100.0,
+                              help="Percentagem das horas em que a oferta de reserva é aceite. A GridCog usa 50%.") / 100
     with c2:
         st.subheader("Tarifas")
         lvl = st.selectbox("Nível de tensão (tarifa de acesso ERSE)", LEVELS, index=LEVELS.index(P("Nível de tensão", "MT")))
@@ -233,7 +235,7 @@ if run:
         pv_capex_eur_kwp=pv_capex, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
         bess_wear_eur_mwh=wear, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
-        arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur,
+        arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
         start_year=int(start_year), years=int(years), discount_rate=disc, fast=fast, variants=vs)
     bar = st.progress(0.0, "A preparar dados de mercado e PV...")

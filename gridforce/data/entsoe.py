@@ -11,7 +11,9 @@ Documentos usados (área de controlo REN, 10YPT-REN------W):
 from __future__ import annotations
 
 import datetime as dt
+import io
 import os
+import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -22,7 +24,8 @@ API = "https://web-api.tp.entsoe.eu/api"
 PT = "10YPT-REN------W"
 
 
-def _get(params: dict) -> str:
+def _get(params: dict) -> list[str]:
+    """Devolve a lista de documentos XML (a API responde com um zip quando há vários)."""
     token = os.environ.get("ENTSOE_TOKEN")
     if not token:
         try:  # segredo do Streamlit Cloud
@@ -36,11 +39,21 @@ def _get(params: dict) -> str:
     if r.status_code == 401:
         raise PermissionError("ENTSO-E: falta a chave (ENTSOE_TOKEN) ou é inválida")
     r.raise_for_status()
-    return r.text
+    if r.content[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            return [z.read(n).decode("utf-8") for n in z.namelist() if n.lower().endswith(".xml")]
+    return [r.text]
+
+
+def _parse_all(xmls: list[str]) -> pd.DataFrame:
+    frames = [_parse(x) for x in xmls]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["start", "step", "direction", "price"])
 
 
 def _parse(xml: str, amount_tags=("procurement_Price.amount", "activation_Price.amount", "price.amount")) -> pd.DataFrame:
     root = ET.fromstring(xml)
+    if root.tag.endswith("Acknowledgement_MarketDocument"):  # sem dados para o período
+        return pd.DataFrame(columns=["start", "step", "direction", "price"])
     ns = root.tag.split("}")[0] + "}" if root.tag.startswith("{") else ""
     rows = []
     for ts in root.iter(f"{ns}TimeSeries"):
@@ -89,9 +102,9 @@ def afrr_prices(index: pd.DatetimeIndex, cache_dir: Path | str | None = None) ->
         m2 = min(m + pd.DateOffset(months=1), end)
         fmt = "%Y%m%d%H%M"
         common = {"controlArea_Domain": PT, "periodStart": m.strftime(fmt), "periodEnd": m2.strftime(fmt)}
-        caps.append(_parse(_get({**common, "documentType": "A81", "businessType": "B95",
+        caps.append(_parse_all(_get({**common, "documentType": "A81", "businessType": "B95",
                                  "processType": "A51", "Type_MarketAgreement.Type": "A01"})))
-        acts.append(_parse(_get({**common, "documentType": "A84", "processType": "A16", "businessType": "A96"})))
+        acts.append(_parse_all(_get({**common, "documentType": "A84", "processType": "A16", "businessType": "A96"})))
         m = m2
     cap = _to_15min(pd.concat(caps), index)
     act = _to_15min(pd.concat(acts), index)

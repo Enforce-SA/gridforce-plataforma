@@ -24,7 +24,7 @@ class Costs:
 
 
 def annual_streams(df: pd.DataFrame, import_adder: float = 0.0, export_fee: float = 0.0,
-                   act_up: float = 0.0, act_dn: float = 0.0) -> dict[str, float]:
+                   act_up: float = 0.0, act_dn: float = 0.0, acceptance: float = 1.0) -> dict[str, float]:
     """Receitas (+) e custos (-) do ano, em EUR, por fonte de valor."""
     mwh = DT / 1000.0
     s = {
@@ -32,10 +32,10 @@ def annual_streams(df: pd.DataFrame, import_adder: float = 0.0, export_fee: floa
         "Venda PV a preço fixo (PPA)": float((df.xpv * (df.ppa_price - export_fee)).sum() * mwh) if "xpv" in df else 0.0,
         "Mercado diário - compra (import)": float(-(df.imp * df.da_price).sum() * mwh),
         "Tarifas de acesso - energia e potência em ponta": float(-(df.imp * df.adder).sum() * mwh) if "adder" in df else 0.0,
-        "aFRR subir - capacidade": float((df.rup * df.up_cap).sum() * mwh),
-        "aFRR descer - capacidade": float((df.rdn * df.dn_cap).sum() * mwh),
-        "aFRR subir - ativação": float((df.rup * act_up * df.up_act).sum() * mwh),
-        "aFRR descer - ativação": float((df.rdn * act_dn * df.dn_act).sum() * mwh),
+        "aFRR subir - capacidade": float((df.rup * acceptance * df.up_cap).sum() * mwh),
+        "aFRR descer - capacidade": float((df.rdn * acceptance * df.dn_cap).sum() * mwh),
+        "aFRR subir - ativação": float((df.rup * acceptance * act_up * df.up_act).sum() * mwh),
+        "aFRR descer - ativação": float(-(df.rdn * acceptance * act_dn * df.dn_act).sum() * mwh),
     }
     return s
 

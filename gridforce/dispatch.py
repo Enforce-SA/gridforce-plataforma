@@ -54,9 +54,10 @@ class Markets:
     afrr_up_cap: np.ndarray | None = None        # EUR/MW/h
     afrr_dn_cap: np.ndarray | None = None        # EUR/MW/h
     afrr_up_act_price: np.ndarray | None = None  # EUR/MWh recebidos pela energia ativada a subir
-    afrr_dn_act_price: np.ndarray | None = None  # EUR/MWh pagos (negativo = pago) pela energia ativada a descer
+    afrr_dn_act_price: np.ndarray | None = None  # EUR/MWh pagos PELO agente pela energia ativada a descer (negativo = recebe)
     afrr_up_act_rate: float = 0.10               # fração da reserva a subir efetivamente ativada
     afrr_dn_act_rate: float = 0.10
+    afrr_acceptance: float = 1.0                 # fração das horas em que a oferta de reserva é aceite
     reserve_duration_h: float = 1.0              # energia que tem de estar disponível para a reserva
     min_bid_kw: float = 0.0
     enable_afrr: bool = True
@@ -111,9 +112,10 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
     if has_bat:
         c[k["dis"] * n:(k["dis"] + 1) * n] = bat.degradation_eur_mwh * e
     if afrr:
-        a_up, a_dn = mkt.afrr_up_act_rate, mkt.afrr_dn_act_rate
-        c[k["rup"] * n:(k["rup"] + 1) * n] = -(mk["up_cap"] * e + a_up * mk["up_act"] * e) + a_up * bat.degradation_eur_mwh * e
-        c[k["rdn"] * n:(k["rdn"] + 1) * n] = -(mk["dn_cap"] * e + a_dn * mk["dn_act"] * e)
+        acc = mkt.afrr_acceptance
+        a_up, a_dn = mkt.afrr_up_act_rate * acc, mkt.afrr_dn_act_rate * acc
+        c[k["rup"] * n:(k["rup"] + 1) * n] = -(acc * mk["up_cap"] * e + a_up * mk["up_act"] * e) + a_up * bat.degradation_eur_mwh * e
+        c[k["rdn"] * n:(k["rdn"] + 1) * n] = -(acc * mk["dn_cap"] * e - a_dn * mk["dn_act"] * e)
 
     rows, cols, vals = [], [], []
     b_eq = []
@@ -126,8 +128,8 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
         b_eq.append(load[t]); r += 1
     if has_bat:
         eta = bat.eta
-        a_up = mkt.afrr_up_act_rate if afrr else 0
-        a_dn = mkt.afrr_dn_act_rate if afrr else 0
+        a_up = mkt.afrr_up_act_rate * mkt.afrr_acceptance if afrr else 0
+        a_dn = mkt.afrr_dn_act_rate * mkt.afrr_acceptance if afrr else 0
         for t in range(n):
             # soc_t - soc_{t-1} - eta*ch*DT + dis*DT/eta - a_dn*rdn*eta*DT + a_up*rup*DT/eta = 0
             rows += [r, r, r]; cols += [col("soc", t), col("ch", t), col("dis", t)]

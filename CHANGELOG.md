@@ -1,6 +1,6 @@
 # Histórico de versões da GridForce
 
-Cada versão publicada em Produção tem um número (maior.menor.correção) e uma etiqueta no GitHub (`v0.8.0`, ...).
+Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
 ## 0.8.0 (2026-11-19)

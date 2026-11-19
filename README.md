@@ -27,7 +27,7 @@ streamlit run app.py
   ambiente de testes e usa a pasta `projetos_qualidade` da biblioteca (`GRIDFORCE_LIB_FOLDER`), para os testes não
   mexerem nos projetos de Produção. Se a app for pública, definir `APP_PASSWORD`.
 - Fluxo: cada melhoria vai primeiro para `qualidade`; depois de aprovada, junta-se a `main`, sobe-se o número em
-  `gridforce/version.py`, regista-se em `CHANGELOG.md` e cria-se a etiqueta `vX.Y.Z` no GitHub.
+  `gridforce/version.py` e regista-se a versão em `CHANGELOG.md`.
 - A versão e o histórico aparecem no fundo da aplicação.
 
 ## Publicar no Streamlit Community Cloud

@@ -1,0 +1,36 @@
+# Constrói a imagem da GridForce e publica-a no GitHub Container Registry.
+#   ramo main      -> ghcr.io/enforce-sa/gridforce:producao
+#   ramo qualidade -> ghcr.io/enforce-sa/gridforce:qualidade
+# As apps do Azure (ou outro alojamento) usam estas imagens com implementação contínua.
+name: Imagem GridForce
+
+on:
+  push:
+    branches: [main, qualidade]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Etiqueta
+        id: tag
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then echo "tag=producao" >> "$GITHUB_OUTPUT"; else echo "tag=qualidade" >> "$GITHUB_OUTPUT"; fi
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/enforce-sa/gridforce:${{ steps.tag.outputs.tag }}
+            ghcr.io/enforce-sa/gridforce:${{ steps.tag.outputs.tag }}-${{ github.sha }}

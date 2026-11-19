@@ -45,6 +45,22 @@ def _get(params: dict) -> list[str]:
     return [r.text]
 
 
+def _get_split(params: dict, start: pd.Timestamp, end: pd.Timestamp) -> list[str]:
+    """Pede [start, end); se a ENTSO-E recusar por excesso de documentos, divide o período ao meio."""
+    fmt = "%Y%m%d%H%M"
+    try:
+        return _get({**params, "periodStart": start.strftime(fmt), "periodEnd": end.strftime(fmt)})
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 400 and "exceeds the allowed maximum" in e.response.text \
+                and end - start > pd.Timedelta("1h"):
+            mid = start + (end - start) / 2
+            mid = mid.floor("h")
+            return _get_split(params, start, mid) + _get_split(params, mid, end)
+        if e.response is not None and e.response.status_code == 400 and "No matching data" in e.response.text:
+            return []
+        raise
+
+
 def _parse_all(xmls: list[str]) -> pd.DataFrame:
     frames = [_parse(x) for x in xmls]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["start", "step", "direction", "price"])
@@ -102,9 +118,11 @@ def afrr_prices(index: pd.DatetimeIndex, cache_dir: Path | str | None = None) ->
         m2 = min(m + pd.DateOffset(months=1), end)
         fmt = "%Y%m%d%H%M"
         common = {"controlArea_Domain": PT, "periodStart": m.strftime(fmt), "periodEnd": m2.strftime(fmt)}
-        caps.append(_parse_all(_get({**common, "documentType": "A81", "businessType": "B95",
-                                 "processType": "A51", "Type_MarketAgreement.Type": "A01"})))
-        acts.append(_parse_all(_get({**common, "documentType": "A84", "processType": "A16", "businessType": "A96"})))
+        base = {"controlArea_Domain": PT}
+        caps.append(_parse_all(_get_split({**base, "documentType": "A81", "businessType": "B95",
+                                           "processType": "A51", "Type_MarketAgreement.Type": "A01"}, m, m2)))
+        acts.append(_parse_all(_get_split({**base, "documentType": "A84", "processType": "A16",
+                                           "businessType": "A96"}, m, m2)))
         m = m2
     cap = _to_15min(pd.concat(caps), index)
     act = _to_15min(pd.concat(acts), index)

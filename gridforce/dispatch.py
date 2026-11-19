@@ -30,10 +30,20 @@ class Battery:
     soc_init: float = 0.5
     degradation_eur_mwh: float = 5.0   # custo de desgaste por MWh descarregado
     max_cycles_per_day: float | None = None
+    eta_charge: float | None = None    # eficiências separadas (se None, usa raiz da round-trip)
+    eta_discharge: float | None = None
 
     @property
     def eta(self) -> float:
         return float(np.sqrt(self.rte))
+
+    @property
+    def eta_ch(self) -> float:
+        return float(self.eta_charge) if self.eta_charge else self.eta
+
+    @property
+    def eta_dis(self) -> float:
+        return float(self.eta_discharge) if self.eta_discharge else self.eta
 
 
 @dataclass
@@ -143,22 +153,22 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
             rows.append(r); cols.append(col(nm, t)); vals.append(s)
         b_eq.append(load[t]); r += 1
     if has_bat:
-        eta = bat.eta
+        eta_c, eta_d = bat.eta_ch, bat.eta_dis
         a_up = mkt.afrr_up_act_rate * mkt.afrr_acceptance if afrr else 0
         a_dn = mkt.afrr_dn_act_rate * mkt.afrr_acceptance if afrr else 0
         for t in range(n):
             # soc_t - soc_{t-1} - eta*ch*DT + dis*DT/eta - a_dn*rdn*eta*DT + a_up*rup*DT/eta = 0
             rows += [r, r, r]; cols += [col("soc", t), col("ch", t), col("dis", t)]
-            vals += [1, -eta * DT, DT / eta]
+            vals += [1, -eta_c * DT, DT / eta_d]
             if t > 0:
                 rows.append(r); cols.append(col("soc", t - 1)); vals.append(-1); b_eq.append(0.0)
             else:
                 b_eq.append(soc0)
             if afrr:
-                rows += [r, r]; cols += [col("rdn", t), col("rup", t)]; vals += [-a_dn * eta * DT, a_up * DT / eta]
+                rows += [r, r]; cols += [col("rdn", t), col("rup", t)]; vals += [-a_dn * eta_c * DT, a_up * DT / eta_d]
             if mfrr:
                 rows += [r, r]; cols += [col("mdn", t), col("mup", t)]
-                vals += [-mkt.mfrr_dn_act_rate * eta * DT, mkt.mfrr_up_act_rate * DT / eta]
+                vals += [-mkt.mfrr_dn_act_rate * eta_c * DT, mkt.mfrr_up_act_rate * DT / eta_d]
             r += 1
         # SOC final = SOC inicial (evita esvaziar no fim da janela)
         rows.append(r); cols.append(col("soc", n - 1)); vals.append(1); b_eq.append(soc0); r += 1
@@ -194,11 +204,11 @@ def _solve_window(load, pv, mk: dict, bat: Battery | None, site: Site, soc0: flo
             for t in range(n):
                 # energia para entregar a reserva a subir: sum(r*dur)/eta <= soc - soc_min
                 rows += [r] * (len(durs_up) + 1); cols += [col(x, t) for x, _ in durs_up] + [col("soc", t)]
-                vals += [d / bat.eta for _, d in durs_up] + [-1]
+                vals += [d / bat.eta_dis for _, d in durs_up] + [-1]
                 b_ub.append(-bat.soc_min * bat.energy_kwh); r += 1
                 # espaço para a reserva a descer: sum(r*dur)*eta <= soc_max - soc
                 rows += [r] * (len(durs_dn) + 1); cols += [col(x, t) for x, _ in durs_dn] + [col("soc", t)]
-                vals += [d * bat.eta for _, d in durs_dn] + [1]
+                vals += [d * bat.eta_ch for _, d in durs_dn] + [1]
                 b_ub.append(bat.soc_max * bat.energy_kwh); r += 1
         if not mkt.enable_arbitrage:
             # a bateria só carrega com PV: ch <= pv_used

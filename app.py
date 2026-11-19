@@ -191,6 +191,15 @@ with tab_tech:
                                                       "Garantias típicas: 1 a 2 ciclos por dia.")
         b_capex = st.number_input("Capex bateria (EUR/kWh)", value=P("Capex bateria (EUR/kWh)", 509.05))
         b_opex = st.number_input("Opex bateria (EUR/kWh/ano)", value=P("Opex bateria (EUR/kWh/ano)", 0.0))
+        with st.expander("Mais parâmetros da bateria"):
+            eta_c = st.number_input("Eficiência de carga (%, 0 = usar a round-trip)", value=P("Eficiência de carga (%)", 0.0),
+                                    min_value=0.0, max_value=100.0) / 100
+            eta_d = st.number_input("Eficiência de descarga (%, 0 = usar a round-trip)", value=P("Eficiência de descarga (%)", 0.0),
+                                    min_value=0.0, max_value=100.0) / 100
+            avail = st.number_input("Disponibilidade técnica (%)", value=P("Disponibilidade técnica (%)", 100.0),
+                                    min_value=0.0, max_value=100.0) / 100
+            aux = st.number_input("Consumos auxiliares (kW por MW de bateria)", value=P("Consumos auxiliares (kW por MW)", 0.0),
+                                  min_value=0.0, help="AVAC, controlo, transformador. Típico: 5 a 15 kW/MW.")
 
 with tab_mkt:
     c1, c2, c3 = st.columns(3)
@@ -204,6 +213,9 @@ with tab_mkt:
         dur = st.number_input("Duração mínima da reserva (h)", value=P("Duração mínima da reserva (h)", 1.0))
         acc = st.number_input("Ofertas aceites (%)", value=P("Ofertas aceites (%)", 100.0), min_value=0.0, max_value=100.0,
                               help="Percentagem das horas em que a oferta de reserva é aceite. A GridCog usa 50%.") / 100
+        cap_scale = st.number_input("Ajuste dos preços de capacidade aFRR (%)",
+                                    value=P("Ajuste dos preços de capacidade aFRR (%)", 100.0), min_value=0.0,
+                                    help="100% = preços da ENTSO-E dos últimos 12 meses. Ex.: 300% para usar preços 3 vezes maiores.") / 100
         intra = st.checkbox("Mercado intradiário contínuo", P("Intradiário", False),
                             help="A bateria compra e vende ao melhor preço entre o diário e o intradiário (OMIE).")
         capt = st.number_input("Vantagem do intradiário capturada (%)", value=P("Vantagem do intradiário capturada (%)", 25.0),
@@ -239,6 +251,12 @@ with tab_mkt:
         ins = st.number_input("Seguro no 1.º ano (EUR/ano)", value=P("Seguro no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
         ins_chg = st.number_input("Variação anual do seguro (% do valor inicial)", value=P("Variação anual do seguro (% do valor inicial)", 0.0),
                                   help="Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.") / 100
+        bsp_fee = st.number_input("Comissão do agregador/BSP (% das receitas de serviços de sistema)",
+                                  value=P("Comissão do agregador/BSP (%)", 0.0), min_value=0.0, max_value=100.0) / 100
+        esc = st.number_input("Escalada anual dos preços de mercado (%)", value=P("Escalada anual dos preços (%)", 0.0),
+                              help="Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.") / 100
+        resid = st.number_input("Valor residual no fim (% do capex)", value=P("Valor residual (% do capex)", 0.0),
+                                min_value=0.0, max_value=100.0) / 100
 
 with tab_var:
     st.write("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
@@ -268,7 +286,9 @@ if run:
         pv_capex_eur_kwp=pv_capex, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
         bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
-        arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc,
+        bess_eta_charge=eta_c or None, bess_eta_discharge=eta_d or None, bess_availability=avail,
+        bess_aux_kw_per_mw=aux, bsp_fee_pct=bsp_fee, price_escalation_yr=esc, residual_value_pct=resid,
+        arbitrage=arbitrage, afrr=afrr, afrr_act_rate=act, afrr_duration_h=dur, afrr_acceptance=acc, afrr_cap_scale=cap_scale,
         intraday=intra, intraday_capture=capt, mfrr=mfrr, mfrr_up_act_rate=m_up, mfrr_dn_act_rate=m_dn,
         prices_start=(pd.Timestamp(p_end) - pd.DateOffset(years=1) + pd.Timedelta(days=1)).date(), prices_end=p_end,
         start_year=int(start_year), years=int(years), discount_rate=disc, fast=fast, variants=vs)
@@ -321,7 +341,12 @@ with tab_res:
             "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
             "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}",
             "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "Autoconsumo PV (%)": lambda x: "" if pd.isna(x) else f"{x:.0f}%",
-            "Importação 1.º ano (MWh)": "{:,.0f}"}), width="stretch", hide_index=True)
+            "Importação 1.º ano (MWh)": "{:,.0f}", "EBITDA 1.º ano (EUR)": "{:,.0f}",
+            "Ganho 1.º ano por MW de bateria (EUR/MW)": lambda x: "" if pd.isna(x) else f"{x:,.0f}",
+            "Ciclos por dia (1.º ano)": lambda x: "" if pd.isna(x) else f"{x:.2f}",
+            "LCOS (EUR/MWh descarregado)": lambda x: "" if pd.isna(x) else f"{x:,.1f}",
+            "Custo nivelado do PV e bateria (EUR/MWh PV)": lambda x: "" if pd.isna(x) else f"{x:,.1f}"}),
+            width="stretch", hide_index=True)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -370,6 +395,15 @@ with tab_res:
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             st.plotly_chart(_style(fig), width="stretch")
+
+        st.subheader("Contas anuais")
+        vname_a = st.selectbox("Variante ", [x.variant.name for x in res.variants], key="annual_pick")
+        ra = next(x for x in res.variants if x.variant.name == vname_a)
+        if ra.annual is not None:
+            st.dataframe(ra.annual.style.format("{:,.0f}"), width="stretch")
+        if res.audit:
+            with st.expander("Auditoria da execução"):
+                st.table(pd.Series(res.audit, name="Valor").astype(str))
 
         st.subheader("Energia no 1.º ano")
         en = pd.DataFrame({"Base": res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})

@@ -97,6 +97,10 @@ with st.expander("Biblioteca de projetos", expanded=False):
     except Exception as e:  # noqa: BLE001
         lib_files = []
         st.error(f"Não foi possível ler a biblioteca: {e}")
+    _d = lib.days_to_expiry()
+    if _d is not None and _d <= 30:
+        st.warning(f"A chave de acesso à biblioteca expira dentro de {_d} dias. Crie uma nova no GitHub "
+                   "(GridForce biblioteca, Regenerate token) e atualize-a nos Secrets do Streamlit.")
     c1, c2 = st.columns([3, 1])
     with c1:
         sel = st.multiselect("Projetos da biblioteca a abrir", lib_files, key="lib_sel",

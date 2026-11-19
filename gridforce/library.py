@@ -54,12 +54,29 @@ def safe_name(name: str) -> str:
     return (s or "projeto")[:80] + ".json"
 
 
+TOKEN_EXPIRY: str | None = None   # data de expiração da chave, lida das respostas do GitHub
+
+
+def days_to_expiry() -> int | None:
+    """Dias até a chave da biblioteca expirar (None se não se souber)."""
+    if not TOKEN_EXPIRY:
+        return None
+    import datetime as dt
+    try:
+        d = dt.datetime.strptime(TOKEN_EXPIRY[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (d - dt.date.today()).days
+
+
 def list_projects() -> list[str]:
     """Nomes dos ficheiros na biblioteca, ordenados."""
     token, repo = _cfg()
     if not token:
         return sorted(p.name for p in LOCAL.glob("*.json")) if LOCAL.exists() else []
     r = requests.get(f"{API}/repos/{repo}/contents/{FOLDER}", headers=_headers(token), timeout=30)
+    global TOKEN_EXPIRY
+    TOKEN_EXPIRY = r.headers.get("github-authentication-token-expiration") or TOKEN_EXPIRY
     if r.status_code == 404:
         return []
     r.raise_for_status()

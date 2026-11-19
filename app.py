@@ -19,12 +19,14 @@ import importlib
 import gridforce.dispatch
 import gridforce.finance
 import gridforce.project
+import gridforce.presets
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
 # pode manter a versão antiga dos módulos em memória.
-for _m in (gridforce.dispatch, gridforce.finance, gridforce.project):
+for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
+from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
@@ -78,13 +80,32 @@ LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CS
 LEVELS = ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"]
 SALES = ["Mercado diário OMIE", "Preço fixo (PPA)"]
 
-with st.expander("Abrir projeto guardado (ficheiro .json)", expanded=False):
-    up = st.file_uploader("Ficheiro de projeto GridForce", type=["json"], key="preset_file")
-    if up is not None:
-        st.session_state["preset"] = json.loads(up.getvalue().decode("utf-8"))
-        st.session_state["preset_id"] = up.file_id if hasattr(up, "file_id") else up.name
-        st.success(f"Projeto carregado: {st.session_state['preset'].get('Nome do projeto', up.name)}. "
-                   "Os campos dos separadores já têm os valores deste projeto.")
+with st.expander("Abrir projetos guardados (ficheiros .json)", expanded=False):
+    ups = st.file_uploader("Ficheiros de projeto GridForce (pode escolher vários de uma vez)", type=["json"],
+                           key="preset_files", accept_multiple_files=True)
+    loaded = {}
+    for u in ups or []:
+        try:
+            d = json.loads(u.getvalue().decode("utf-8"))
+            loaded[d.get("Nome do projeto", u.name)] = (d, getattr(u, "file_id", u.name))
+        except Exception as e:  # noqa: BLE001
+            st.error(f"{u.name}: ficheiro inválido ({e})")
+    if loaded:
+        pick = st.selectbox("Projeto a mostrar nos separadores", list(loaded), key="preset_pick")
+        st.session_state["preset"], st.session_state["preset_id"] = loaded[pick][0], f"{loaded[pick][1]}_{pick}"
+        st.success(f"{len(loaded)} projeto(s) carregado(s). Os separadores mostram: {pick}.")
+        if len(loaded) > 1 and st.button(f"Correr os {len(loaded)} projetos", type="primary"):
+            bar = st.progress(0.0, "A preparar...")
+            out = []
+            for i, (nm, (d, _)) in enumerate(loaded.items()):
+                try:
+                    out.append(run_project(config_from_dict(d), progress=lambda f, t, i=i, nm=nm: bar.progress(
+                        (i + f) / len(loaded), f"{nm}: {t}")))
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"{nm}: a simulação falhou ({e})")
+            bar.progress(1.0, "Concluído")
+            st.session_state["portfolio"] = out
+            st.info("Resultados no separador 5.")
 PRESET = st.session_state.get("preset", {})
 PRESET_ID = st.session_state.get("preset_id", "base")
 
@@ -247,8 +268,29 @@ if run:
         st.error(f"A simulação falhou: {e}")
 
 with tab_res:
+    port = st.session_state.get("portfolio")
+    if port:
+        st.subheader("Carteira de projetos")
+        pt = portfolio_table(port)
+        cols = ["Projeto", "Variante", "Capex (EUR)", "Opex (EUR/ano)", "Ganho 1.º ano face à base (EUR)",
+                "VAL (EUR)", "TIR", "Payback (anos)"]
+        st.dataframe(pt[cols].style.format({
+            "Capex (EUR)": "{:,.0f}", "Opex (EUR/ano)": "{:,.0f}", "Ganho 1.º ano face à base (EUR)": "{:,.0f}",
+            "VAL (EUR)": "{:,.0f}", "TIR": lambda x: "n.d." if pd.isna(x) else f"{x * 100:.1f}%",
+            "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}"}), width="stretch", hide_index=True)
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Capex total", f"{pt['Capex (EUR)'].sum():,.0f} EUR")
+        k2.metric("VAL total", f"{pt['VAL (EUR)'].sum():,.0f} EUR")
+        k3.metric("Ganho total 1.º ano", f"{pt['Ganho 1.º ano face à base (EUR)'].sum():,.0f} EUR")
+        pbuf = io.BytesIO()
+        portfolio_excel(port, pbuf)
+        st.download_button("Descarregar carteira (Excel)", pbuf.getvalue(), file_name="GridForce_carteira.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.divider()
     res = st.session_state.get("result")
-    if res is None:
+    if res is None and port:
+        st.caption("Para ver gráficos e despacho de um projeto, escolhe-o em cima e carrega em Correr simulação.")
+    elif res is None:
         st.info("Preenche os separadores 1 a 4 e carrega em **Correr simulação**.")
     else:
         summ = pd.DataFrame([r.metrics for r in res.variants])

@@ -21,15 +21,17 @@ import gridforce.finance
 import gridforce.project
 import gridforce.presets
 import gridforce.sensitivity
+import gridforce.library
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
 # pode manter a versão antiga dos módulos em memória.
 for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets,
-           gridforce.sensitivity):
+           gridforce.sensitivity, gridforce.library):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 from gridforce import sensitivity as sens
+from gridforce import library as lib
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
@@ -83,16 +85,59 @@ LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CS
 LEVELS = ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"]
 SALES = ["Mercado diário OMIE", "Preço fixo (PPA)"]
 
-with st.expander("Abrir projetos guardados (ficheiros .json)", expanded=False):
-    ups = st.file_uploader("Ficheiros de projeto GridForce (pode escolher vários de uma vez)", type=["json"],
-                           key="preset_files", accept_multiple_files=True)
+with st.expander("Biblioteca de projetos", expanded=False):
+    if lib.is_shared():
+        st.caption("Projetos guardados e partilhados com a equipa. Não se perdem ao atualizar a página.")
+    else:
+        st.warning("A biblioteca partilhada ainda não está ligada: os projetos guardados aqui só duram até "
+                   "a aplicação reiniciar.")
     loaded = {}
+    try:
+        lib_files = lib.list_projects()
+    except Exception as e:  # noqa: BLE001
+        lib_files = []
+        st.error(f"Não foi possível ler a biblioteca: {e}")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        sel = st.multiselect("Projetos da biblioteca a abrir", lib_files, key="lib_sel",
+                             format_func=lambda x: x[:-5].replace("_", " "))
+    with c2:
+        st.write("")
+        if lib_files and st.button("Selecionar todos"):
+            st.session_state["lib_sel"] = lib_files
+            st.rerun()
+    for fn in sel:
+        try:
+            d = lib.load_project(fn)
+            loaded[d.get("Nome do projeto", fn[:-5])] = (d, f"lib_{fn}")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"{fn}: não foi possível abrir ({e})")
+    ups = st.file_uploader("Ou carregar ficheiros de projeto (.json) do computador", type=["json"],
+                           key="preset_files", accept_multiple_files=True)
+    up_dicts = []
     for u in ups or []:
         try:
             d = json.loads(u.getvalue().decode("utf-8"))
+            up_dicts.append(d)
             loaded[d.get("Nome do projeto", u.name)] = (d, getattr(u, "file_id", u.name))
         except Exception as e:  # noqa: BLE001
             st.error(f"{u.name}: ficheiro inválido ({e})")
+    if up_dicts and st.button(f"Guardar {len(up_dicts)} ficheiro(s) carregado(s) na biblioteca"):
+        try:
+            for d in up_dicts:
+                lib.save_project(d)
+            st.success("Guardado na biblioteca.")
+            st.rerun()
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Não foi possível guardar: {e}")
+    if sel:
+        with st.popover("Apagar da biblioteca"):
+            st.write("Apaga os projetos selecionados acima. Não se pode desfazer.")
+            if st.button(f"Apagar {len(sel)} projeto(s)", type="primary"):
+                for fn in sel:
+                    lib.delete_project(fn)
+                st.session_state["lib_sel"] = []
+                st.rerun()
     if loaded:
         pick = st.selectbox("Projeto a mostrar nos separadores", list(loaded), key="preset_pick")
         st.session_state["preset"], st.session_state["preset_id"] = loaded[pick][0], f"{loaded[pick][1]}_{pick}"
@@ -158,6 +203,9 @@ with tab_site:
         elif load_mode != "Perfil tipo de centro comercial":
             f = st.file_uploader("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)",
                                  type=["csv"])
+            if f is None and PRESET.get("Diagrama de carga (kW)"):
+                load_kw = np.asarray(PRESET["Diagrama de carga (kW)"], dtype=float)
+                st.info(f"A usar o diagrama de carga guardado no projeto ({load_kw.sum() * 0.25 / 1000:,.1f} MWh/ano).")
             if f is not None:
                 raw = pd.read_csv(f, sep=None, engine="python")
                 col = raw.select_dtypes("number").columns[-1]
@@ -301,7 +349,60 @@ with tab_var:
              "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh.")
     variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}")
 
-run = st.button("Correr simulação", type="primary")
+def _current_project() -> dict:
+    vdf = variants_df.dropna(subset=["Variante"]).copy()
+    vdf = vdf.astype(object).where(pd.notna(vdf), None)
+    d = {
+        "Nome do projeto": name, "Latitude": lat, "Longitude": lon, "Consumo do local": load_mode,
+        "Consumo anual (MWh)": annual,
+        "Limite de importação (kW, 0 = sem limite)": imp_lim, "Limite de injeção na rede (kW, 0 = sem limite)": exp_lim,
+        "Inclinação (°)": tilt, "Azimute (°, 180 = sul)": az, "Perdas do sistema (%)": loss,
+        "Rácio DC/AC do inversor": dcac, "Degradação anual (%)": pv_deg * 100, "Capex PV (EUR/kWp)": pv_capex,
+        "Opex PV (EUR/kWp/ano)": pv_opex, "Eficiência round-trip (%)": rte * 100, "Janela de SOC (%)": [soc_min, soc_max],
+        "Perda de capacidade anual (%)": b_deg * 100, "Custo de desgaste (EUR/MWh descarregado)": wear,
+        "Máximo de ciclos por dia (0 = sem limite)": max_cyc, "Capex bateria (EUR/kWh)": b_capex,
+        "Opex bateria (EUR/kWh/ano)": b_opex, "Eficiência de carga (%)": eta_c * 100 if eta_c else 0.0,
+        "Eficiência de descarga (%)": eta_d * 100 if eta_d else 0.0, "Disponibilidade técnica (%)": avail * 100,
+        "Consumos auxiliares (kW por MW)": aux, "Modelo de degradação": deg_mode,
+        "Perda por calendário (%/ano)": cal * 100, "Perda por ciclo equivalente (%)": cyc * 100,
+        "Fim de vida (%)": eol * 100, "Augmentation": aug, "Custo da reposição (EUR/kWh)": aug_cost,
+        "Ano de substituição do PCS": int(pcs_y), "Custo da substituição do PCS (EUR/kW)": pcs_c,
+        "Preços OMIE: últimos 12 meses até": p_end.isoformat(), "Arbitragem": arbitrage, "aFRR": afrr,
+        "Taxa de ativação aFRR (%)": act * 100, "Duração mínima da reserva (h)": dur, "Ofertas aceites (%)": acc * 100,
+        "Ajuste dos preços de capacidade aFRR (%)": cap_scale * 100, "Intradiário": intra,
+        "Vantagem do intradiário capturada (%)": capt * 100, "mFRR": mfrr, "Ativação mFRR a subir (%)": m_up * 100,
+        "Ativação mFRR a descer (%)": m_dn * 100, "Nível de tensão": lvl, "Outros custos na compra (EUR/MWh)": extra,
+        "Comissão na venda (EUR/MWh)": fee, "Venda da energia PV injetada": sale, "Preço fixo no 1.º ano (EUR/MWh)": ppa,
+        "Aumento anual do preço fixo (EUR/MWh por ano)": ppa_esc, "Ano de início": int(start_year),
+        "Duração (anos)": int(years), "Taxa de desconto (%)": disc * 100, "Modo rápido": fast,
+        "Horizonte do despacho": hor, "Capex adicional (EUR)": other_capex, "O&M no 1.º ano (EUR/ano)": om,
+        "Crescimento anual do O&M (%)": om_esc * 100, "Seguro no 1.º ano (EUR/ano)": ins,
+        "Variação anual do seguro (% do valor inicial)": ins_chg * 100, "Comissão do agregador/BSP (%)": bsp_fee * 100,
+        "Escalada anual dos preços (%)": esc * 100, "Valor residual (% do capex)": resid * 100,
+        "Imposto sobre lucros (%)": tax * 100, "Amortização fiscal (anos)": int(dep_y),
+        "Dívida (% do capex)": debt_pct * 100, "Taxa de juro da dívida (%)": debt_rate * 100,
+        "Prazo da dívida (anos)": int(debt_ten), "Reembolso": debt_kind, "DSCR mínimo": dscr_min,
+        "Custo do capital próprio (%)": eq_rate * 100,
+        "Variantes": vdf.to_dict("records"),
+    }
+    if load_kw is not None:
+        d["Diagrama de carga (kW)"] = [round(float(x), 3) for x in load_kw]
+    return {k: (round(v, 10) if isinstance(v, float) else v) for k, v in d.items()}
+
+
+c_run, c_save, c_dl = st.columns([1, 1, 1])
+with c_run:
+    run = st.button("Correr simulação", type="primary")
+with c_save:
+    if st.button("Guardar projeto na biblioteca"):
+        try:
+            fn = lib.save_project(_current_project())
+            st.success(f"Guardado como {fn[:-5].replace('_', ' ')}. Se já existia com este nome, foi substituído.")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Não foi possível guardar: {e}")
+with c_dl:
+    st.download_button("Descarregar projeto (.json)", json.dumps(_current_project(), ensure_ascii=False, indent=2),
+                       file_name=lib.safe_name(name), mime="application/json")
 
 if run:
     def _num(x, default=0.0):

@@ -34,6 +34,7 @@ def config_from_dict(d: dict) -> ProjectConfig:
                                 _f(r, "BESS (kW)", 0.0), capex_eur=None if cap in (None, "") else float(cap)))
     return ProjectConfig(
         name=d.get("Nome do projeto", "Projeto"), lat=_f(d, "Latitude", 38.96), lon=_f(d, "Longitude", -9.33),
+        load_kw=d.get("Diagrama de carga (kW)") if str(load_mode).startswith("Carregar") else None,
         annual_load_mwh=0.0 if load_mode.startswith("Sem consumo") else _f(d, "Consumo anual (MWh)", 4666.4),
         voltage_level=None if str(lvl).startswith("Sem") else lvl,
         import_limit_kw=_f(d, "Limite de importação (kW, 0 = sem limite)", 0.0) or 1e6,

@@ -462,7 +462,7 @@ with tab_res:
             "Payback (anos)": lambda x: "n.d." if pd.isna(x) else f"{x:.1f}"}), width="stretch", hide_index=True)
         k1, k2, k3 = st.columns(3)
         k1.metric("Capex total", f"{pt['Capex (EUR)'].sum():,.0f} EUR")
-        k2.metric("VAL total", f"{pt['VAL (EUR)'].sum():,.0f} EUR")
+        k2.metric("VAL total (NPV)", f"{pt['VAL (EUR)'].sum():,.0f} EUR")
         k3.metric("Ganho total 1.º ano", f"{pt['Ganho 1.º ano face à base (EUR)'].sum():,.0f} EUR")
         pbuf = io.BytesIO()
         portfolio_excel(port, pbuf)
@@ -478,9 +478,10 @@ with tab_res:
         summ = pd.DataFrame([r.metrics for r in res.variants])
         best = summ.loc[summ["VAL (EUR)"].idxmax()]
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Melhor variante (VAL)", best["Variante"])
-        k2.metric("VAL", f"{best['VAL (EUR)']:,.0f} EUR")
-        k3.metric("TIR", "n.d." if pd.isna(best["TIR"]) else f"{best['TIR'] * 100:.1f}%")
+        k1.metric("Melhor variante (maior VAL / NPV)", best["Variante"])
+        k2.metric("VAL (NPV)", f"{best['VAL (EUR)']:,.0f} EUR",
+                  help="Valor Atual Líquido, em inglês Net Present Value (NPV), à taxa de desconto do separador 3.")
+        k3.metric("TIR (IRR)", "n.d." if pd.isna(best["TIR"]) else f"{best['TIR'] * 100:.1f}%")
         k4.metric("Payback", "n.d." if pd.isna(best["Payback (anos)"]) else f"{best['Payback (anos)']:.1f} anos")
 
         st.subheader("Resumo das variantes")

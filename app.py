@@ -320,7 +320,7 @@ with tab_res:
                     if abs(delta) > 1:
                         rows.append({"Variante": r.variant.name, "Fonte de valor": k, "EUR": delta})
             fig = px.bar(pd.DataFrame(rows), x="Variante", y="EUR", color="Fonte de valor", barmode="relative")
-            fig.update_layout(legend=dict(orientation="h", y=-0.3), height=460, margin=dict(t=10))
+            fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"), height=520, margin=dict(t=110))
             st.plotly_chart(_style(fig), width="stretch")
         with c2:
             st.subheader("Cashflow descontado acumulado")
@@ -330,7 +330,7 @@ with tab_res:
                 disc_cf = cf / (1 + res.config.discount_rate) ** np.arange(len(cf))
                 fig.add_trace(go.Scatter(x=cf.index, y=disc_cf.cumsum(), mode="lines", name=r.variant.name))
             fig.add_hline(y=0, line_dash="dot")
-            fig.update_layout(height=460, margin=dict(t=10), yaxis_title="EUR", legend=dict(orientation="h", y=-0.2))
+            fig.update_layout(height=520, margin=dict(t=110), yaxis_title="EUR", legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader("Despacho num dia")
@@ -353,9 +353,9 @@ with tab_res:
                 fig.add_trace(go.Scatter(x=d.index, y=d.rup, name="Reserva aFRR subir", line=dict(dash="dot")))
             fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name="Preço OMIE (EUR/MWh)", yaxis="y2",
                                      line=dict(color="#F2C14E")))
-            fig.update_layout(barmode="relative", height=420, margin=dict(t=10), yaxis_title="kW",
+            fig.update_layout(barmode="relative", height=480, margin=dict(t=80), yaxis_title="kW",
                               yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
-                              legend=dict(orientation="h", y=-0.2))
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
             st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader("Energia no 1.º ano")

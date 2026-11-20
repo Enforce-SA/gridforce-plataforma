@@ -3,7 +3,7 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
-## Próxima versão (em teste em Qualidade)
+## 0.9.1 (2026-11-20)
 - Botão "Novo projeto": limpa os campos próprios do projeto nos separadores 1 a 4 e mantém valores típicos nos restantes; avisa o que falta preencher antes de correr.
 - Ao abrir outro projeto, todos os campos passam a mostrar os valores desse projeto, e mudar de língua já não apaga o que se escreveu.
 

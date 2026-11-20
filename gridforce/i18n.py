@@ -333,3 +333,95 @@ EN = {
     "Cashflows projeto": "Project cashflows", "Auditoria": "Audit", "Energia 1.º ano": "Energy year 1",
     "Base (sem ativos)": "Baseline (no assets)", "Carteira": "Portfolio", "Fontes de valor": "Value streams",
 }
+
+# Relatório Word (gridforce/report.py)
+EN.update({
+    "RELATÓRIO DA SOLUÇÃO": "SOLUTION REPORT", "Índice": "Contents", "Localização": "Location",
+    "Data do relatório": "Report date", "Preços de mercado": "Market prices", "Versão": "Version",
+    "1. Resumo do projeto": "1. Project summary", "2. Energia": "2. Energy", "3. Análise comercial": "3. Commercial analysis",
+    "4. Riscos e sensibilidades": "4. Risks and sensitivities", "5. Comparação de variantes": "5. Variant comparison",
+    "Anexo: pressupostos e auditoria": "Appendix: assumptions and audit",
+    "Os resultados vêm de uma simulação com previsão perfeita de preços (limite superior económico). "
+    "Os valores \"face à base\" comparam o projeto com o mesmo local sem os novos ativos.":
+        "Results come from a simulation with perfect price foresight (economic upper bound). "
+        "Values \"vs baseline\" compare the project with the same site without the new assets.",
+    "Este relatório apresenta a variante {v} do projeto {p}. No 1.º ano, o projeto melhora o resultado "
+    "do local em {g} face à situação sem os novos ativos. Com um investimento de {c}, o VAL a {r} é de "
+    "{n} e a TIR é de {i}.":
+        "This report presents variant {v} of project {p}. In year 1 the project improves the site's result by {g} "
+        "compared with the situation without the new assets. With an investment of {c}, the NPV at {r} is {n} "
+        "and the IRR is {i}.",
+    "Indicadores do projeto": "Project metrics", "Indicador": "Metric", "Taxa de desconto": "Discount rate",
+    "Payback": "Payback", "Duração do projeto": "Project duration", "ano": "year", "por ano": "per year",
+    "Indicadores de energia (1.º ano)": "Energy metrics (year 1)", "Independência da rede": "Grid independence",
+    "Produção específica (kWh/kWp)": "Specific yield (kWh/kWp)", "Ativos": "Assets",
+    "Sistema fotovoltaico": "Solar PV system", "Potência de pico (kWp)": "Peak power (kWp)",
+    "Potência do inversor (kW AC)": "Inverter power (kW AC)", "Inclinação / azimute": "Tilt / azimuth",
+    "Perdas do sistema": "System losses", "Degradação anual": "Annual degradation", "Venda do excedente": "Surplus sale",
+    "Energia (kWh)": "Energy (kWh)", "Potência (kW)": "Power (kW)", "Duração (h)": "Duration (h)",
+    "Eficiência de ida e volta": "Round-trip efficiency", "Estado de carga mínimo / máximo": "Minimum / maximum state of charge",
+    "Degradação": "Degradation", "Por ciclos e calendário": "By cycles and calendar",
+    "Limite de ciclos por dia": "Cycle limit per day", "sem limite": "no limit", "Mercados": "Markets",
+    "Arbitragem no mercado diário": "Day-ahead arbitrage", "Mercado intradiário": "Intraday market",
+    "aFRR": "aFRR", "mFRR": "mFRR",
+    "Balanço de energia do 1.º ano": "Year-1 energy balance", "Grandeza": "Quantity", "Variação": "Change",
+    "Perfil mensal de energia": "Monthly energy profile", "Energia por mês no 1.º ano, em MWh.": "Energy per month in year 1, in MWh.",
+    "Perfil diário médio": "Average daily profile",
+    "Potência média em cada hora do dia ao longo do 1.º ano, em kW.": "Average power at each hour of the day over year 1, in kW.",
+    "Importação": "Import", "Exportação": "Export", "Dias úteis": "Weekdays", "Fins de semana": "Weekends", "Hora": "Hour",
+    "kW (média)": "kW (average)", "Rede (+importação / -exportação)": "Grid (+import / -export)",
+    "EUR no 1.º ano, face à base": "EUR in year 1, vs baseline",
+    "Value stack do 1.º ano": "Year-1 value stack", "Fonte de valor (EUR)": "Value stream (EUR)", "Total": "Total",
+    "Receitas com sinal positivo e custos com sinal negativo, em EUR, no 1.º ano.":
+        "Revenues are positive and costs negative, in EUR, in year 1.",
+    "Contributo de cada fonte de valor para o ganho do 1.º ano face à base.":
+        "Contribution of each value stream to the year-1 gain vs baseline.",
+    "Cashflow do projeto face à base, descontado à taxa de {r} e acumulado, para todas as variantes. "
+    "A variante deste relatório está assinalada com ◄.":
+        "Project cashflow vs baseline, discounted at {r} and cumulated, for all variants. "
+        "The variant in this report is marked with ◄.",
+    "Custos de investimento e de operação": "Investment and operating costs", "Componente": "Component",
+    "Quantidade": "Units", "Preço unitário": "Unit price", "Capex total da variante (valor indicado)": "Variant total capex (as entered)",
+    "Outros custos de investimento": "Other investment costs", "Custo anual": "Annual cost", "Opex PV": "PV opex",
+    "Opex bateria": "Battery opex", "O&M fixo": "Fixed O&M", "Seguro": "Insurance", "Opex do 1.º ano": "Year-1 opex",
+    "Reposição de capacidade e substituições ao longo do projeto: {x}.":
+        "Capacity augmentation and replacements over the project: {x}.",
+    "Valores em EUR, face à base. O ano {y} é o do investimento.": "Values in EUR, vs baseline. Year {y} is the investment year.",
+    "Taxa de juro": "Interest rate", "Prazo": "Tenor", "Tipo de reembolso": "Repayment type",
+    "Prestação constante": "Annuity (constant instalment)", "Amortização constante": "Constant principal",
+    "Taxa de IRC": "Corporate tax rate", "Amortização fiscal": "Tax depreciation",
+    "Cada fator varia sozinho, com o despacho do caso base. Os outros ficam como no caso base. VAL do caso base: {n}.":
+        "Each factor varies on its own, with the base-case dispatch. The others stay as in the base case. Base-case NPV: {n}.",
+    "VAL a descer (EUR)": "NPV, factor down (EUR)", "VAL a subir (EUR)": "NPV, factor up (EUR)",
+    "TIR a descer": "IRR, factor down", "TIR a subir": "IRR, factor up", "Cenário": "Scenario",
+    "Os cenários de preços P90 / P50 / P10 entram no relatório quando são corridos na aplicação antes de o descarregar.":
+        "The P90 / P50 / P10 price scenarios are included when they are run in the app before downloading the report.",
+    "Ganho 1.º ano (EUR)": "Year-1 gain (EUR)",
+    "Pressupostos de modelação": "Modelling assumptions", "Diagrama de carga carregado": "Uploaded load profile",
+    "Sem consumo": "No consumption", "Limite de importação (kW)": "Import limit (kW)",
+    "Limite de exportação (kW)": "Export limit (kW)", "Período de preços": "Price period",
+    "Semana (7 dias)": "Week (7 days)", "Dia a dia": "Day by day", "Previsão de preços": "Price forecast",
+    "Perfeita (limite superior económico)": "Perfect (economic upper bound)", "Escalada anual de preços": "Annual price escalation",
+    "Valor residual": "Residual value", "Simulação": "Simulation",
+    "Rápida (1.º e último ano, restantes interpolados)": "Fast (first and last year, others interpolated)",
+    "Completa (todos os anos)": "Full (every year)", "Taxa de ativação aFRR": "aFRR activation rate",
+    "Horas com oferta aceite aFRR": "aFRR hours with accepted bid", "Ajuste dos preços de capacidade aFRR": "aFRR capacity price adjustment",
+    "Ativação mFRR a subir / descer": "mFRR activation up / down", "Comissão do agregador (BSP)": "Aggregator (BSP) fee",
+    "Verificação": "Check", "Sim": "Yes", "Não": "No", "Notas": "Notes",
+    "O despacho da bateria é otimizado com previsão perfeita dos preços, por isso os ganhos de mercado são um "
+    "limite superior. Na operação real, com previsões, ficam tipicamente abaixo.":
+        "Battery dispatch is optimised with perfect price foresight, so market gains are an upper bound. "
+        "In real operation, with forecasts, they are typically lower.",
+    "Os preços de mercado vêm do OMIE (diário e intradiário) e da ENTSO-E (aFRR e mFRR) para o período indicado, "
+    "e repetem-se nos anos seguintes com a escalada definida.":
+        "Market prices come from OMIE (day-ahead and intraday) and ENTSO-E (aFRR and mFRR) for the stated period, "
+        "and are repeated in later years with the chosen escalation.",
+    "Produção fotovoltaica estimada com dados PVGIS (Comissão Europeia) para a localização do projeto.":
+        "PV production estimated with PVGIS data (European Commission) for the project location.",
+    "Descarregar relatório (Word)": "Download report (Word)", "Variante do relatório": "Report variant",
+    "A preparar o relatório...": "Preparing the report...", "Relatório e exportação": "Report and export",
+    "relatorio": "report", "Guia rápido": "Quick guide", "Descarregar guia (Word)": "Download guide (Word)",
+    "GridForce_guia_rapido": "GridForce_quick_guide",
+    "O relatório Word inclui os cenários P90 / P50 / P10 se os correres antes para a mesma variante.":
+        "The Word report includes the P90 / P50 / P10 scenarios if you run them first for the same variant.",
+})

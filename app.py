@@ -31,6 +31,7 @@ for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.p
            gridforce.version, gridforce.sensitivity, gridforce.library, gridforce.i18n):
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
+from gridforce.report import to_docx
 from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 from gridforce import sensitivity as sens
 from gridforce import library as lib
@@ -112,6 +113,15 @@ st.markdown('<h1>Grid<span class="gf">Force</span></h1>', unsafe_allow_html=True
 if QA:
     st.warning(T("AMBIENTE DE QUALIDADE (testes). Os resultados e projetos daqui não são os de Produção."), icon="🧪")
 st.caption(T("Dimensionamento e simulação de PV e baterias em Portugal: autoconsumo, mercados diário e intradiário OMIE e serviços de sistema (aFRR, mFRR)."))
+
+with st.expander("📘 " + T("Guia rápido"), expanded=False):
+    from gridforce.report import guide_docx, guide_markdown
+    _gmd = guide_markdown()
+    st.markdown(_gmd)
+    _gb = io.BytesIO()
+    guide_docx(_gb, _gmd)
+    st.download_button(T("Descarregar guia (Word)"), _gb.getvalue(), file_name=T("GridForce_guia_rapido") + ".docx",
+                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 DEFAULT_VARIANTS = pd.DataFrame([
     {"Variante": "PV 700 kW + 2 MWh", "PV (kWp)": 700, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
@@ -652,6 +662,7 @@ with tab_res:
                 for f_ in py["failed"]:
                     st.warning(T("Sem dados para {x}").format(x=f_))
                 mc = sens.monte_carlo(rs.parts, vname_s, py)
+                st.session_state["mc_last"] = (id(res), vname_s, mc)
                 if mc:
                     m1, m2, m3 = st.columns(3)
                     for col_, p_ in zip((m1, m2, m3), ("P90", "P50", "P10")):
@@ -674,11 +685,30 @@ with tab_res:
         en = pd.DataFrame({T("Base"): res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})
         st.dataframe(TD(en).style.format("{:,.1f}"), width="stretch")
 
+        st.subheader(T("Relatório e exportação"))
+        _names = [x.variant.name for x in res.variants]
+        c1, c2, c3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+        with c1:
+            vname_r = st.selectbox(T("Variante do relatório"), _names, index=_names.index(best["Variante"]), key="rep_pick")
+        _mc = st.session_state.get("mc_last")
+        _mc = _mc[2] if _mc and _mc[0] == id(res) and _mc[1] == vname_r else None
+        _rk = (id(res), vname_r, _lang, id(_mc) if _mc else None, s_pct, c_pct)
+        if st.session_state.get("rep_key") != _rk:
+            with st.spinner(T("A preparar o relatório...")):
+                _rb = io.BytesIO()
+                to_docx(res, vname_r, _rb, price_scen=_mc, sens_pct=s_pct, capex_pct=c_pct)
+            st.session_state["rep_key"], st.session_state["rep_doc"] = _rk, _rb.getvalue()
+        with c2:
+            st.download_button(T("Descarregar relatório (Word)"), st.session_state["rep_doc"],
+                               file_name=lib.safe_name(f"{res.config.name} {vname_r} {T('relatorio')}")[:-5] + ".docx",
+                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
         buf = io.BytesIO()
         to_excel(res, buf)
-        st.download_button(T("Descarregar investment case (Excel)"), translate_xlsx(buf.getvalue()),
-                           file_name=f"{res.config.name}_investment_case.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
+            st.download_button(T("Descarregar investment case (Excel)"), translate_xlsx(buf.getvalue()),
+                               file_name=f"{res.config.name}_investment_case.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.caption(T("O relatório Word inclui os cenários P90 / P50 / P10 se os correres antes para a mesma variante."))
 
 st.divider()
 _cv1, _cv2 = st.columns([1, 3])

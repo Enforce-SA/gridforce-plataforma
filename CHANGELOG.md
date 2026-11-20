@@ -3,6 +3,10 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## Próxima versão (em teste em Qualidade)
+- Relatório Word da variante escolhida, em português ou inglês: resumo, energia (balanço, perfis mensal e diário), análise comercial (value stack, cashflow, custos, contas anuais, financiamento), sensibilidades e cenários P90/P50/P10, comparação de variantes, pressupostos e auditoria.
+- Guia rápido para quem testa, dentro da aplicação e em Word, em português e inglês.
+
 ## 0.8.1 (2026-11-19)
 - Contentor Docker e publicação automática da imagem, para alojamento próprio no Azure.
 - "Perfil tipo de centro comercial" passa a chamar-se "Perfil tipo C&I" (os projetos guardados continuam a abrir).

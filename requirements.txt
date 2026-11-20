@@ -6,3 +6,5 @@ requests
 openpyxl
 streamlit
 plotly
+python-docx
+matplotlib

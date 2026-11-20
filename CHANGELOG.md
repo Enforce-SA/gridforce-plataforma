@@ -3,7 +3,7 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
-## Próxima versão (em teste em Qualidade)
+## 0.9.0 (2026-11-20)
 - Relatório Word da variante escolhida, em português ou inglês: resumo, energia (balanço, perfis mensal e diário), análise comercial (value stack, cashflow, custos, contas anuais, financiamento), sensibilidades e cenários P90/P50/P10, comparação de variantes, pressupostos e auditoria.
 - Guia rápido para quem testa, dentro da aplicação e em Word, em português e inglês.
 

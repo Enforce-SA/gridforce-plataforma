@@ -422,6 +422,15 @@ EN.update({
     "A preparar o relatório...": "Preparing the report...", "Relatório e exportação": "Report and export",
     "relatorio": "report", "Guia rápido": "Quick guide", "Descarregar guia (Word)": "Download guide (Word)",
     "GridForce_guia_rapido": "GridForce_quick_guide",
+    "Novo projeto": "New project",
+    "Limpa os separadores 1 a 4 para começar um projeto do zero. Os projetos da biblioteca não são alterados.":
+        "Clears tabs 1 to 4 to start a project from scratch. Library projects are not changed.",
+    "Projeto novo. Preenche os campos vazios (nome, localização, consumo, custos e variantes). "
+    "Os outros campos têm valores típicos: confirma-os antes de correr.":
+        "New project. Fill in the empty fields (name, location, consumption, costs and variants). "
+        "The other fields hold typical values: check them before running.",
+    "Falta preencher: {x}.": "Still to fill in: {x}.", "Variantes (separador 4)": "Variants (tab 4)",
+    "Diagrama de carga (CSV)": "Load profile (CSV)",
     "O relatório Word inclui os cenários P90 / P50 / P10 se os correres antes para a mesma variante.":
         "The Word report includes the P90 / P50 / P10 scenarios if you run them first for the same variant.",
 })

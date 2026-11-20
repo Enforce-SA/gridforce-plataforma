@@ -20,7 +20,7 @@ Open **Project library** at the top of the page.
 
 The library is shared with the whole team. **Saving with the same name replaces the existing project**, so when you change something to test it, change the name (for example "Lousal - test Ana"). **Delete from library** cannot be undone.
 
-To start a new project, just fill in tabs 1 to 4 and save.
+To start a new project, click **➕ New project** (above the tabs). The project's own fields are cleared (name, location, consumption, unit costs, fixed price and variants) and the rest keep typical values, which you should check. If a required field is missing, the app tells you which one before running.
 
 ## 2. Fill in the tabs
 

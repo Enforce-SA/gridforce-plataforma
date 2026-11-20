@@ -20,7 +20,7 @@ Abre **Biblioteca de projetos**, no topo da página.
 
 A biblioteca é partilhada com toda a equipa. **Guardar com o mesmo nome substitui o projeto existente**, por isso, quando fizeres alterações para testar, muda o nome (por exemplo "Lousal - teste Ana"). **Apagar da biblioteca** não se pode desfazer.
 
-Para começar um projeto novo, basta preencher os separadores 1 a 4 e guardar.
+Para começar um projeto novo, carrega em **➕ Novo projeto** (por cima dos separadores). Os campos próprios do projeto ficam vazios (nome, localização, consumo, custos unitários, preço fixo e variantes) e os restantes ficam com valores típicos, que deves confirmar. Se faltar algum campo obrigatório, a aplicação diz qual antes de correr.
 
 ## 2. Preencher os separadores
 

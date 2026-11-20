@@ -36,7 +36,7 @@ from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
 from gridforce import sensitivity as sens
 from gridforce import library as lib
 from gridforce.version import VERSION, DATE as VERSION_DATE
-from gridforce.i18n import T, TD, TF, TP, set_lang, translate_xlsx
+from gridforce.i18n import EN, T, TD, TF, TP, set_lang, translate_xlsx
 
 st.set_page_config(page_title="GridForce", page_icon="⚡", layout="wide")
 
@@ -135,6 +135,20 @@ LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CS
 LEVELS = ["MT", "BTE", "AT", "MAT", "Sem tarifas de acesso"]
 SALES = ["Mercado diário OMIE", "Preço fixo (PPA)"]
 
+# Campos que ficam vazios num projeto novo (são próprios de cada projeto); os restantes ficam com valores típicos
+NEW_BLANK = {"Nome do projeto": "", "Latitude": None, "Longitude": None, "Consumo anual (MWh)": None,
+             "Capex PV (EUR/kWp)": None, "Capex bateria (EUR/kWh)": None, "Preço fixo no 1.º ano (EUR/MWh)": None}
+
+
+def _new_project():
+    n = st.session_state.get("new_n", 0) + 1
+    st.session_state["new_n"] = n
+    st.session_state["lib_sel"] = []
+    st.session_state["preset"], st.session_state["preset_id"] = {"_novo": True}, f"novo{n}"
+    for k in ("result", "portfolio", "price_years", "mc_last", "rep_key", "rep_doc"):
+        st.session_state.pop(k, None)
+
+
 with st.expander(T("Biblioteca de projetos"), expanded=False):
     if lib.is_shared():
         st.caption(T("Projetos guardados e partilhados com a equipa. Não se perdem ao atualizar a página."))
@@ -166,7 +180,7 @@ with st.expander(T("Biblioteca de projetos"), expanded=False):
         except Exception as e:  # noqa: BLE001
             st.error(T("{fn}: não foi possível abrir ({e})").format(fn=fn, e=e))
     ups = st.file_uploader(T("Ou carregar ficheiros de projeto (.json) do computador"), type=["json"],
-                           key="preset_files", accept_multiple_files=True)
+                           key=f"preset_files_{st.session_state.get('new_n', 0)}", accept_multiple_files=True)
     up_dicts = []
     for u in ups or []:
         try:
@@ -211,7 +225,12 @@ PRESET = st.session_state.get("preset", {})
 PRESET_ID = st.session_state.get("preset_id", "base")
 
 
+NEW = bool(PRESET.get("_novo"))
+
+
 def P(key, default):
+    if NEW and key in NEW_BLANK:
+        return NEW_BLANK[key]
     v = PRESET.get(key, default)
     if isinstance(default, float) and not isinstance(v, bool):
         try:
@@ -227,7 +246,9 @@ def P(key, default):
 
 
 def _variants_default():
-    if "Variantes" in PRESET:
+    if NEW:
+        df = pd.DataFrame(columns=["Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)"])
+    elif "Variantes" in PRESET:
         df = pd.DataFrame(PRESET["Variantes"])
     else:
         df = DEFAULT_VARIANTS.copy()
@@ -236,6 +257,29 @@ def _variants_default():
             df[c] = None
     return df.astype({"PV (kWp)": float, "BESS (kWh)": float, "BESS (kW)": float, "Capex total (EUR)": float})
 
+
+st.button("➕ " + T("Novo projeto"), on_click=_new_project,
+          help=T("Limpa os separadores 1 a 4 para começar um projeto do zero. Os projetos da biblioteca não são alterados."))
+if NEW:
+    st.info(T("Projeto novo. Preenche os campos vazios (nome, localização, consumo, custos e variantes). "
+              "Os outros campos têm valores típicos: confirma-os antes de correr."))
+
+# Cada campo dos separadores 1 a 4 tem uma chave ligada ao projeto aberto: ao abrir outro projeto ou começar um novo,
+# todos os campos voltam aos valores desse projeto (e mudar de língua já não apaga o que se escreveu).
+_REV = {v: k for k, v in EN.items()}
+_WIDGETS = ("text_input", "number_input", "checkbox", "radio", "selectbox", "slider", "date_input")
+_ORIG = {w: getattr(st, w) for w in _WIDGETS}
+
+
+def _keyed(fn):
+    def wrapper(label, *a, **k):
+        k.setdefault("key", f"{PRESET_ID}|{_REV.get(label, label)}")
+        return fn(label, *a, **k)
+    return wrapper
+
+
+for _w in _WIDGETS:
+    setattr(st, _w, _keyed(_ORIG[_w]))
 
 tab_site, tab_tech, tab_mkt, tab_var, tab_res = st.tabs(
     [T(x) for x in ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"]])
@@ -403,6 +447,8 @@ with tab_var:
     variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
                                  column_config={c: st.column_config.Column(T(c)) for c in
                                                 ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)")})
+for _w in _WIDGETS:
+    setattr(st, _w, _ORIG[_w])
 
 def _current_project() -> dict:
     vdf = variants_df.dropna(subset=["Variante"]).copy()
@@ -459,6 +505,29 @@ with c_dl:
     st.download_button(T("Descarregar projeto (.json)"), json.dumps(_current_project(), ensure_ascii=False, indent=2),
                        file_name=lib.safe_name(name), mime="application/json")
 
+_missing = []
+if run:
+    for _lbl, _val in [("Nome do projeto", name.strip()), ("Latitude", lat), ("Longitude", lon)]:
+        if _val in (None, ""):
+            _missing.append(T(_lbl))
+    if load_mode == "Perfil tipo de centro comercial" and annual is None:
+        _missing.append(T("Consumo anual (MWh)"))
+    if load_mode == "Carregar diagrama de carga (CSV)" and load_kw is None:
+        _missing.append(T("Diagrama de carga (CSV)"))
+    if sale == "Preço fixo (PPA)" and ppa is None:
+        _missing.append(T("Preço fixo no 1.º ano (EUR/MWh)"))
+    _vd = variants_df.dropna(subset=["Variante"])
+    if _vd.empty:
+        _missing.append(T("Variantes (separador 4)"))
+    else:
+        _no_total = _vd["Capex total (EUR)"].isna()
+        if pv_capex is None and (_no_total & (_vd["PV (kWp)"].fillna(0) > 0)).any():
+            _missing.append(T("Capex PV (EUR/kWp)"))
+        if b_capex is None and (_no_total & (_vd["BESS (kWh)"].fillna(0) > 0)).any():
+            _missing.append(T("Capex bateria (EUR/kWh)"))
+    if _missing:
+        st.error(T("Falta preencher: {x}.").format(x=", ".join(_missing)))
+        run = False
 if run:
     def _num(x, default=0.0):
         try:
@@ -469,7 +538,7 @@ if run:
                   capex_eur=_num(r.get("Capex total (EUR)"), None))
           for _, r in variants_df.dropna(subset=["Variante"]).iterrows()]
     cfg = ProjectConfig(
-        name=name, lat=lat, lon=lon, annual_load_mwh=annual, load_kw=load_kw,
+        name=name, lat=lat, lon=lon, annual_load_mwh=annual or 0.0, load_kw=load_kw,
         voltage_level=None if lvl.startswith("Sem") else lvl,
         import_limit_kw=imp_lim or 1e6, export_limit_kw=exp_lim or 1e6,
         extra_import_eur_mwh=extra, export_fee_eur_mwh=fee,
@@ -477,9 +546,9 @@ if run:
         other_capex_eur=other_capex, om_eur_yr=om, om_escalation_yr=om_esc, insurance_eur_yr=ins,
         insurance_change_yr=ins_chg,
         pv_tilt=tilt, pv_azimuth=az, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
-        pv_capex_eur_kwp=pv_capex, pv_opex_eur_kwp_yr=pv_opex,
+        pv_capex_eur_kwp=pv_capex if pv_capex is not None else 0.0, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
-        bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex, bess_opex_eur_kwh_yr=b_opex,
+        bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex if b_capex is not None else 0.0, bess_opex_eur_kwh_yr=b_opex,
         bess_eta_charge=eta_c or None, bess_eta_discharge=eta_d or None, bess_availability=avail,
         bess_aux_kw_per_mw=aux, bess_deg_mode="ciclos" if deg_mode.startswith("Por ciclos") else "linear",
         bess_cal_fade_yr=cal, bess_cycle_fade_per_efc=cyc, bess_eol_pct=eol, bess_augment=aug,

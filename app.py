@@ -32,7 +32,7 @@ for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.p
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
-from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
+from gridforce.presets import CAPEX_MODES, capex_mode, config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
 from gridforce.project import compare as compare_variants
 from gridforce import sensitivity as sens
 from gridforce import library as lib
@@ -323,6 +323,11 @@ with tab_site:
         exp_lim = st.number_input(T("Limite de injeção na rede (kW, 0 = sem limite)"), value=P("Limite de injeção na rede (kW, 0 = sem limite)", 0.0), min_value=0.0)
 
 with tab_tech:
+    capex_m = st.radio(T("Capex do equipamento (PV e bateria)"), CAPEX_MODES, format_func=T, horizontal=True,
+                       index=CAPEX_MODES.index(capex_mode(PRESET)) if not NEW else 0,
+                       help=T("Calculado: kWp x EUR/kWp + kWh x EUR/kWh, com os valores deste separador. "
+                            "Valor fixo: escreves o capex do equipamento de cada variante no separador 4."))
+    FIXED = capex_m == CAPEX_MODES[1]
     c1, c2 = st.columns(2)
     with c1:
         st.subheader(T("PV"))
@@ -332,7 +337,8 @@ with tab_tech:
         dcac = st.number_input(T("Rácio DC/AC do inversor"), value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
         pv_peak_slot = st.container()   # preenchido depois do separador 4 (a potência de pico vem das variantes)
         pv_deg = st.number_input(T("Degradação anual (%)"), value=P("Degradação anual (%)", 0.5)) / 100
-        pv_capex = st.number_input(T("Capex PV (EUR/kWp)"), value=P("Capex PV (EUR/kWp)", 900.0))
+        pv_capex = st.number_input(T("Capex PV (EUR/kWp)"), value=P("Capex PV (EUR/kWp)", 900.0), disabled=FIXED,
+                                   help=T("Não conta: o capex está como valor fixo por variante (separador 4).") if FIXED else None)
         pv_opex = st.number_input(T("Opex PV (EUR/kWp/ano)"), value=P("Opex PV (EUR/kWp/ano)", 0.0))
     with c2:
         st.subheader(T("Bateria"))
@@ -343,7 +349,8 @@ with tab_tech:
         max_cyc = st.number_input(T("Máximo de ciclos por dia (0 = sem limite)"), value=P("Máximo de ciclos por dia (0 = sem limite)", 2.0),
                                   min_value=0.0, help=T("Média por semana, contando também a energia das ativações aFRR/mFRR. "
                                                       "Garantias típicas: 1 a 2 ciclos por dia."))
-        b_capex = st.number_input(T("Capex bateria (EUR/kWh)"), value=P("Capex bateria (EUR/kWh)", 509.05))
+        b_capex = st.number_input(T("Capex bateria (EUR/kWh)"), value=P("Capex bateria (EUR/kWh)", 509.05), disabled=FIXED,
+                                  help=T("Não conta: o capex está como valor fixo por variante (separador 4).") if FIXED else None)
         b_opex = st.number_input(T("Opex bateria (EUR/kWh/ano)"), value=P("Opex bateria (EUR/kWh/ano)", 0.0))
         with st.expander(T("Mais parâmetros da bateria")):
             eta_c = st.number_input(T("Eficiência de carga (%, 0 = usar a round-trip)"), value=P("Eficiência de carga (%)", 0.0),
@@ -471,17 +478,22 @@ with tab_mkt:
             eq_rate = st.number_input(T("Custo do capital próprio (%)"), value=P("Custo do capital próprio (%)", 10.0), min_value=0.0) / 100
 
 with tab_var:
-    st.write(T("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
-             "O capex do equipamento é opcional: se o preencheres, substitui o cálculo por EUR/kWp e EUR/kWh. "
-             "O licenciamento, a ligação à rede e o capex adicional (separador 3) somam-se a este valor."))
+    st.write(T("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade."))
+    if FIXED:
+        st.info(T("Capex do equipamento: valor fixo por variante. Escreve-o na última coluna. Para usar EUR/kWp e "
+                  "EUR/kWh, muda a opção no separador 2. O licenciamento e o capex adicional (separador 3) somam-se."))
+    else:
+        st.info(T("Capex do equipamento calculado com os EUR/kWp e EUR/kWh do separador 2 (vê o quadro em baixo). "
+                  "Para escrever um valor fixo por variante, muda a opção no separador 2."))
     st.caption(T("Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria "
                "nos resultados, em \"Cenário base e valor incremental\"."))
     variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
+                                 column_order=["Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)"] + (["Capex total (EUR)"] if FIXED else []),
                                  column_config={**{c: st.column_config.Column(T(c)) for c in
                                                    ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)")},
                                                 "Capex total (EUR)": st.column_config.NumberColumn(
-                                                    T("Capex do equipamento (EUR, opcional)"), format="%.0f",
-                                                    help=T("PV e bateria. Se ficar vazio, é calculado com os EUR/kWp e EUR/kWh do separador 2."))})
+                                                    T("Capex do equipamento (EUR)"), format="%.0f",
+                                                    help=T("PV e bateria, por variante."))})
     _vv = variants_df.dropna(subset=["Variante"])
     if not _vv.empty:
         def _n(x):
@@ -491,7 +503,7 @@ with tab_var:
                 return 0.0
         _rows = []
         for _, _r in _vv.iterrows():
-            _eq_in = _r.get("Capex total (EUR)")
+            _eq_in = _r.get("Capex total (EUR)") if FIXED else None
             _eq = _n(_eq_in) if _eq_in is not None and not pd.isna(_eq_in) else \
                 _n(_r.get("PV (kWp)")) * (pv_capex or 0.0) + _n(_r.get("BESS (kWh)")) * (b_capex or 0.0)
             _rows.append({"Variante": _r["Variante"],
@@ -505,13 +517,10 @@ with tab_var:
         _ct["Origem"] = _ct["Origem"].map(T)
         st.dataframe(TD(_ct).style.format({T(c): "{:,.0f}" for c in _ct.columns if c.endswith("(EUR)")}),
                      width="stretch", hide_index=True)
-        _ign = [str(_r["Variante"]) for _, _r in _vv.iterrows()
-                if _r.get("Capex total (EUR)") is not None and not pd.isna(_r.get("Capex total (EUR)"))
-                and ((pv_capex or 0) * _n(_r.get("PV (kWp)")) > 0 or (b_capex or 0) * _n(_r.get("BESS (kWh)")) > 0)]
-        if _ign:
-            st.warning(T("Atenção: {v} tem o capex do equipamento preenchido na tabela, por isso os valores de Capex PV "
-                         "(EUR/kWp) e Capex bateria (EUR/kWh) do separador 2 não estão a ser usados. Para usar os "
-                         "EUR/kWp e EUR/kWh, apaga o valor da coluna \"Capex do equipamento\".").format(v=", ".join(_ign)))
+        _miss = [str(_r["Variante"]) for _, _r in _vv.iterrows()
+                 if FIXED and (_r.get("Capex total (EUR)") is None or pd.isna(_r.get("Capex total (EUR)")))]
+        if _miss:
+            st.warning(T("Falta o capex do equipamento de: {v}.").format(v=", ".join(_miss)))
 with pv_peak_slot:
     _vv = variants_df.dropna(subset=["Variante"])
     for _i, (_, _r) in enumerate(_vv.iterrows()):
@@ -528,10 +537,6 @@ with pv_peak_slot:
         _cb.number_input(T("Potência AC do inversor (kW)") + _lbl, value=_kwp / dcac if dcac else 0.0, disabled=True,
                          format="%.1f", key=f"{PRESET_ID}|kwac_{_i}_{_r['Variante']}_{_kwp}_{dcac}")
     st.caption(T("A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC."))
-    if any(_r.get("Capex total (EUR)") is not None and not pd.isna(_r.get("Capex total (EUR)")) for _, _r in _vv.iterrows()) \
-            and ((pv_capex or 0) > 0 or (b_capex or 0) > 0):
-        st.warning(T("Há variantes com o capex do equipamento indicado no separador 4: para essas, os EUR/kWp e EUR/kWh "
-                     "daqui não contam."))
 for _w in _WIDGETS:
     setattr(st, _w, _ORIG[_w])
 
@@ -543,7 +548,7 @@ def _current_project() -> dict:
         "Consumo anual (MWh)": annual,
         "Limite de importação (kW, 0 = sem limite)": imp_lim, "Limite de injeção na rede (kW, 0 = sem limite)": exp_lim,
         "Inclinação (°)": tilt, "Azimute (°, 180 = sul)": az, "Perdas do sistema (%)": loss,
-        "Rácio DC/AC do inversor": dcac, "Degradação anual (%)": pv_deg * 100, "Capex PV (EUR/kWp)": pv_capex,
+        "Modo do capex": capex_m, "Rácio DC/AC do inversor": dcac, "Degradação anual (%)": pv_deg * 100, "Capex PV (EUR/kWp)": pv_capex,
         "Opex PV (EUR/kWp/ano)": pv_opex, "Eficiência round-trip (%)": rte * 100, "Janela de SOC (%)": [soc_min, soc_max],
         "Perda de capacidade anual (%)": b_deg * 100, "Custo de desgaste (EUR/MWh descarregado)": wear,
         "Máximo de ciclos por dia (0 = sem limite)": max_cyc, "Capex bateria (EUR/kWh)": b_capex,
@@ -639,10 +644,12 @@ if run:
     if _vd.empty:
         _missing.append(T("Variantes (separador 4)"))
     else:
-        _no_total = _vd["Capex total (EUR)"].isna()
-        if pv_capex is None and (_no_total & (_vd["PV (kWp)"].fillna(0) > 0)).any():
+        _no_total = _vd["Capex total (EUR)"].isna() if FIXED else pd.Series(True, index=_vd.index)
+        if FIXED and _no_total.any():
+            _missing.append(T("Capex do equipamento (separador 4)"))
+        if not FIXED and pv_capex is None and (_no_total & (_vd["PV (kWp)"].fillna(0) > 0)).any():
             _missing.append(T("Capex PV (EUR/kWp)"))
-        if b_capex is None and (_no_total & (_vd["BESS (kWh)"].fillna(0) > 0)).any():
+        if not FIXED and b_capex is None and (_no_total & (_vd["BESS (kWh)"].fillna(0) > 0)).any():
             _missing.append(T("Capex bateria (EUR/kWh)"))
     if _missing:
         st.error(T("Falta preencher: {x}.").format(x=", ".join(_missing)))
@@ -654,7 +661,7 @@ if run:
         except (TypeError, ValueError):
             return default
     vs = [Variant(str(r["Variante"]), _num(r.get("PV (kWp)")), _num(r.get("BESS (kWh)")), _num(r.get("BESS (kW)")),
-                  capex_eur=_num(r.get("Capex total (EUR)"), None))
+                  capex_eur=_num(r.get("Capex total (EUR)"), None) if FIXED else None)
           for _, r in variants_df.dropna(subset=["Variante"]).iterrows()]
     cfg = ProjectConfig(
         name=name, scenario=scenario, lat=lat, lon=lon, annual_load_mwh=annual or 0.0, load_kw=load_kw,

@@ -20,18 +20,43 @@ def _f(d, k, default):
         return default
 
 
+CAPEX_MODES = ["Calculado por EUR/kWp e EUR/kWh", "Valor fixo por variante"]
+
+
+def capex_mode(d: dict) -> str:
+    """Como se calcula o capex do equipamento. Projetos antigos não têm este campo: se tiverem EUR/kWp ou EUR/kWh
+    preenchidos usa-se o cálculo por EUR/kWp e EUR/kWh (o valor fixo antigo deixa de mandar sem se ver), exceto se o
+    cálculo der mais de 10 vezes o valor fixo (sinal de que o preço unitário foi mal preenchido)."""
+    m = d.get("Modo do capex")
+    if m in CAPEX_MODES:
+        return m
+    rows = [r for r in d.get("Variantes", []) if r.get("Variante")]
+    fixed = [r for r in rows if r.get("Capex total (EUR)") not in (None, "")]
+    if not fixed:
+        return CAPEX_MODES[0]
+    pv, bt = _f(d, "Capex PV (EUR/kWp)", 0.0), _f(d, "Capex bateria (EUR/kWh)", 0.0)
+    if pv <= 0 and bt <= 0:
+        return CAPEX_MODES[1]
+    for r in fixed:
+        calc = _f(r, "PV (kWp)", 0.0) * pv + _f(r, "BESS (kWh)", 0.0) * bt
+        if calc > 10 * max(_f(r, "Capex total (EUR)", 0.0), 1.0):
+            return CAPEX_MODES[1]
+    return CAPEX_MODES[0]
+
+
 def config_from_dict(d: dict) -> ProjectConfig:
     p_end = dt.date.fromisoformat(d.get("Preços OMIE: últimos 12 meses até", "2026-09-30"))
     soc = d.get("Janela de SOC (%)", [5, 95])
     lvl = d.get("Nível de tensão", "MT")
     load_mode = d.get("Consumo do local", "Perfil tipo de centro comercial")
     variants = []
+    fixed_mode = capex_mode(d) == CAPEX_MODES[1]
     for r in d.get("Variantes", []):
         if not r.get("Variante"):
             continue
         cap = r.get("Capex total (EUR)")
         variants.append(Variant(str(r["Variante"]), _f(r, "PV (kWp)", 0.0), _f(r, "BESS (kWh)", 0.0),
-                                _f(r, "BESS (kW)", 0.0), capex_eur=None if cap in (None, "") else float(cap)))
+                                _f(r, "BESS (kW)", 0.0), capex_eur=None if (cap in (None, "") or not fixed_mode) else float(cap)))
     return ProjectConfig(
         name=d.get("Nome do projeto", "Projeto"), scenario=str(d.get("Cenário", "") or ""), lat=_f(d, "Latitude", 38.96), lon=_f(d, "Longitude", -9.33),
         load_kw=d.get("Diagrama de carga (kW)") if str(load_mode).startswith("Carregar") else None,

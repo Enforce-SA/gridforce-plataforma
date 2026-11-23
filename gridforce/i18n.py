@@ -554,3 +554,29 @@ EN.update({
     "Há variantes com o capex do equipamento indicado no separador 4: para essas, os EUR/kWp e EUR/kWh daqui não contam.":
         "Some variants have equipment capex entered in tab 4: for those, the EUR/kWp and EUR/kWh here are not used.",
 })
+
+# Modo do capex do equipamento (2026-11-23)
+EN.update({
+    "Capex do equipamento (PV e bateria)": "Equipment capex (PV and battery)",
+    "Calculado por EUR/kWp e EUR/kWh": "Calculated from EUR/kWp and EUR/kWh",
+    "Valor fixo por variante": "Fixed value per variant",
+    "Calculado: kWp x EUR/kWp + kWh x EUR/kWh, com os valores deste separador. Valor fixo: escreves o capex do "
+    "equipamento de cada variante no separador 4.":
+        "Calculated: kWp x EUR/kWp + kWh x EUR/kWh, with the values in this tab. Fixed value: you enter each "
+        "variant's equipment capex in tab 4.",
+    "Não conta: o capex está como valor fixo por variante (separador 4).":
+        "Not used: capex is set as a fixed value per variant (tab 4).",
+    "Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade.":
+        "Each row is a variant to compare. Add or delete rows freely.",
+    "Capex do equipamento: valor fixo por variante. Escreve-o na última coluna. Para usar EUR/kWp e EUR/kWh, muda a "
+    "opção no separador 2. O licenciamento e o capex adicional (separador 3) somam-se.":
+        "Equipment capex: fixed value per variant. Enter it in the last column. To use EUR/kWp and EUR/kWh, change the "
+        "option in tab 2. Licensing and additional capex (tab 3) are added.",
+    "Capex do equipamento calculado com os EUR/kWp e EUR/kWh do separador 2 (vê o quadro em baixo). Para escrever um "
+    "valor fixo por variante, muda a opção no separador 2.":
+        "Equipment capex calculated from the EUR/kWp and EUR/kWh of tab 2 (see the table below). To enter a fixed value "
+        "per variant, change the option in tab 2.",
+    "PV e bateria, por variante.": "PV and battery, per variant.",
+    "Falta o capex do equipamento de: {v}.": "Equipment capex missing for: {v}.",
+    "Capex do equipamento (separador 4)": "Equipment capex (tab 4)",
+})

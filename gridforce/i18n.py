@@ -453,8 +453,8 @@ EN.update({
     "O&M no 1.º ano ({u})": "Year-1 O&M ({u})", "Seguro no 1.º ano ({u})": "Year-1 insurance ({u})",
     "Por ano: O&M {a} EUR, seguro {b} EUR.": "Per year: O&M {a} EUR, insurance {b} EUR.",
     "Fator de emissões da rede (g CO2/kWh)": "Grid emission factor (g CO2/kWh)",
-    "Média da rede portuguesa, para calcular as emissões evitadas. Ajusta ao valor que a equipa usar.":
-        "Portuguese grid average, used for avoided emissions. Adjust to the value the team uses.",
+    "Para calcular as emissões evitadas. A Enforce usa 470 g CO2/kWh para a indústria.":
+        "Used for avoided emissions. Enforce uses 470 g CO2/kWh for industry.",
     "Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria nos "
     "resultados, em \"Cenário base e valor incremental\".":
         "To see the battery's value, add a PV-only row (BESS at 0) and compare it with the PV + battery row in "

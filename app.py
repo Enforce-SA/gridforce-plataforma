@@ -452,9 +452,9 @@ with tab_mkt:
                               help=T("Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.")) / 100
         resid = st.number_input(T("Valor residual no fim (% do capex)"), value=P("Valor residual (% do capex)", 0.0),
                                 min_value=0.0, max_value=100.0) / 100
-        emf = st.number_input(T("Fator de emissões da rede (g CO2/kWh)"), value=P("Fator de emissões da rede (g CO2/kWh)", 100.0),
-                              min_value=0.0, help=T("Média da rede portuguesa, para calcular as emissões evitadas. "
-                                                  "Ajusta ao valor que a equipa usar."))
+        emf = st.number_input(T("Fator de emissões da rede (g CO2/kWh)"), value=P("Fator de emissões da rede (g CO2/kWh)", 470.0),
+                              min_value=0.0, help=T("Para calcular as emissões evitadas. A Enforce usa 470 g CO2/kWh "
+                                                  "para a indústria."))
         with st.expander(T("Financiamento e impostos")):
             st.caption(T("Com imposto e dívida a zero, o caso é antes de impostos e só com capital próprio (como a GridCog)."))
             tax = st.number_input(T("Imposto sobre lucros, IRC + derrama (%)"), value=P("Imposto sobre lucros (%)", 0.0),

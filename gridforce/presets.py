@@ -46,7 +46,7 @@ def config_from_dict(d: dict) -> ProjectConfig:
         ppa_escalation_eur_mwh_yr=_f(d, "Aumento anual do preço fixo (EUR/MWh por ano)", 0.0),
         other_capex_eur=_f(d, "Capex adicional (EUR)", 0.0),
         licensing_capex_eur=_f(d, "Licenciamento e ligação à rede (EUR)", 0.0),
-        emission_factor_g_kwh=_f(d, "Fator de emissões da rede (g CO2/kWh)", 100.0), om_eur_yr=_f(d, "O&M no 1.º ano (EUR/ano)", 0.0),
+        emission_factor_g_kwh=_f(d, "Fator de emissões da rede (g CO2/kWh)", 470.0), om_eur_yr=_f(d, "O&M no 1.º ano (EUR/ano)", 0.0),
         om_escalation_yr=_f(d, "Crescimento anual do O&M (%)", 2.0) / 100,
         insurance_eur_yr=_f(d, "Seguro no 1.º ano (EUR/ano)", 0.0),
         insurance_change_yr=_f(d, "Variação anual do seguro (% do valor inicial)", 0.0) / 100,

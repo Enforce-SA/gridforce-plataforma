@@ -84,7 +84,7 @@ class ProjectConfig:
     # custos do projeto (além dos custos por kWp/kWh)
     other_capex_eur: float = 0.0              # outros custos de investimento (desenvolvimento, etc.)
     licensing_capex_eur: float = 0.0          # licenciamento e ligação à rede (separado do equipamento)
-    emission_factor_g_kwh: float = 100.0      # fator de emissões da rede (g CO2/kWh), para as emissões evitadas
+    emission_factor_g_kwh: float = 470.0      # fator de emissões da rede (g CO2/kWh), para as emissões evitadas
     om_eur_yr: float = 0.0                    # O&M fixo no 1.º ano
     om_escalation_yr: float = 0.0             # crescimento composto anual do O&M
     insurance_eur_yr: float = 0.0             # seguro no 1.º ano

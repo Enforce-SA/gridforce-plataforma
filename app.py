@@ -533,6 +533,38 @@ with c_save:
             st.success(T("Guardado como {fn}. Se já existia com este nome, foi substituído.").format(fn=fn[:-5].replace('_', ' ')))
         except Exception as e:  # noqa: BLE001
             st.error(T("Não foi possível guardar: {e}").format(e=e))
+    with st.popover(T("Gravar como...")):
+        st.caption(T("Grava uma cópia com outro nome (nova versão ou projeto novo). O projeto original fica como estava."))
+        _base = (name or "").strip() or T("Projeto")
+        _sugg, _i = f"{_base} v2", 2
+        while lib.safe_name(_sugg) in lib_files:
+            _i += 1
+            _sugg = f"{_base} v{_i}"
+        new_name = st.text_input(T("Novo nome do projeto"), _sugg, key=f"saveas_name_{PRESET_ID}")
+        _exists = bool(new_name.strip()) and lib.safe_name(new_name.strip()) in lib_files
+        _over = st.checkbox(T("Já existe um projeto com este nome: substituir"), key=f"saveas_over_{PRESET_ID}") if _exists else True
+        if _exists and not _over:
+            st.warning(T("Já existe um projeto com este nome. Escolhe outro nome ou confirma a substituição."))
+
+        def _save_as(d, new):
+            try:
+                d = dict(d, **{"Nome do projeto": new})
+                fn = lib.save_project(d)
+                st.session_state["saveas_msg"] = ("ok", fn)
+                st.session_state["lib_sel"] = [fn]
+                st.session_state.pop("preset_pick", None)
+                st.session_state["preset"], st.session_state["preset_id"] = d, f"lib_{fn}_{new}_{dt.datetime.now():%H%M%S}"
+                for k in ("result", "rep_key", "rep_doc"):
+                    st.session_state.pop(k, None)
+            except Exception as e:  # noqa: BLE001
+                st.session_state["saveas_msg"] = ("err", str(e))
+        st.button(T("Gravar com este nome"), type="primary", disabled=not new_name.strip() or not _over,
+                  on_click=_save_as, args=(_current_project(), new_name.strip()))
+    _msg = st.session_state.pop("saveas_msg", None)
+    if _msg and _msg[0] == "ok":
+        st.success(T("Gravado como {fn}. Os separadores mostram agora este projeto.").format(fn=_msg[1][:-5].replace('_', ' ')))
+    elif _msg:
+        st.error(T("Não foi possível guardar: {e}").format(e=_msg[1]))
 with c_dl:
     st.download_button(T("Descarregar projeto (.json)"), json.dumps(_current_project(), ensure_ascii=False, indent=2),
                        file_name=lib.safe_name(name), mime="application/json")

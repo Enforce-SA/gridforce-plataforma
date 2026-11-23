@@ -53,6 +53,8 @@ Click **Run simulation**. A run usually takes between 15 seconds and 2 minutes, 
 - When several projects are run at once, **Scenarios side by side** shows each scenario's totals (e.g. Investment Grade and Ultra Conservative) and each park in each scenario.
 - **Run audit:** engine version, data used and automatic checks of the energy balance and limits.
 
+To save a new version or a new project from an existing one, use **Save as...** next to "Save project to library": it saves under another name and the original stays as it was.
+
 ## 4. Export
 
 - **Download report (Word):** full report for the chosen variant, with summary, energy, commercial analysis, sensitivities, variant comparison and assumptions, in the active language. If you run the price scenarios for that variant first, P90/P50/P10 is included too.

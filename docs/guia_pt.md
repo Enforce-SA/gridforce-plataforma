@@ -53,6 +53,8 @@ Carrega em **Correr simulação**. Uma simulação demora normalmente entre 15 s
 - Ao correr vários projetos de uma vez, **Cenários lado a lado** mostra os totais de cada cenário (ex.: Investment Grade e Ultra Conservative) e cada parque em cada cenário.
 - **Auditoria da execução:** versão do motor, dados usados e verificações automáticas do balanço de energia e dos limites.
 
+Para gravar uma nova versão ou um projeto novo a partir de um existente, usa **Gravar como...** ao lado de "Guardar projeto na biblioteca": grava com outro nome e o original fica como estava.
+
 ## 4. Exportar
 
 - **Descarregar relatório (Word):** relatório completo da variante escolhida, com resumo, energia, análise comercial, sensibilidades, comparação de variantes e pressupostos, na língua ativa. Se correres antes os cenários de preços para essa variante, o P90/P50/P10 também entra.

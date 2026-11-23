@@ -513,3 +513,16 @@ EN.update({
         "Average market prices and costs applied, with escalation, adjustments and fees. The full year-by-year table "
         "is in the Excel file (sheet Rates by year).",
 })
+
+# Gravar como (2026-11-23)
+EN.update({
+    "Gravar como...": "Save as...",
+    "Grava uma cópia com outro nome (nova versão ou projeto novo). O projeto original fica como estava.":
+        "Saves a copy under another name (new version or new project). The original project stays as it was.",
+    "Novo nome do projeto": "New project name", "Projeto": "Project",
+    "Já existe um projeto com este nome: substituir": "A project with this name already exists: replace it",
+    "Já existe um projeto com este nome. Escolhe outro nome ou confirma a substituição.":
+        "A project with this name already exists. Choose another name or confirm the replacement.",
+    "Gravar com este nome": "Save with this name",
+    "Gravado como {fn}. Os separadores mostram agora este projeto.": "Saved as {fn}. The tabs now show this project.",
+})

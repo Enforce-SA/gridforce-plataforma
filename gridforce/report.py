@@ -427,6 +427,15 @@ def to_docx(res, vname: str, buf, price_scen: dict | None = None, sens_pct: floa
         nd = 2 if k.endswith("(MW)") else 0
         rows.append([T(k), num(a, nd), num(b, nd), ch])
     table(doc, [T("Grandeza"), T("Base"), T("Projeto"), T("Variação")], rows, widths=[7.5, 3, 3, 2.5])
+    if r.flows_y1:
+        heading(doc, T("Fluxos de energia entre ativos"), 2)
+        table(doc, [T("Fluxo"), T("MWh no 1.º ano")],
+              [[T(k), num(x, 0)] for k, x in r.flows_y1.items() if abs(x) > 1e-6], widths=[8, 4])
+    if r.emissions is not None:
+        em = r.emissions["Emissões evitadas (t CO2)"]
+        para(doc, T("Emissões evitadas face à base: {a} t CO2 no 1.º ano e {b} t CO2 ao longo do projeto "
+                    "(fator da rede {f} g CO2/kWh).").format(a=num(em.iloc[0], 0), b=num(em.sum(), 0),
+                                                             f=num(cfg.emission_factor_g_kwh, 0)))
     heading(doc, T("Perfil mensal de energia"), 2)
     figure(doc, _monthly_chart(r.dispatch_y1))
     caption(doc, T("Energia por mês no 1.º ano, em MWh."))
@@ -472,6 +481,8 @@ def to_docx(res, vname: str, buf, price_scen: dict | None = None, sens_pct: floa
         if v.bess_kwh:
             rows.append([T("Bateria"), f"{num(v.bess_kwh)} kWh", f"{num(cfg.bess_capex_eur_kwh, 2)} EUR/kWh",
                          eur(v.bess_kwh * cfg.bess_capex_eur_kwh)])
+    if getattr(cfg, "licensing_capex_eur", 0.0):
+        rows.append([T("Licenciamento e ligação à rede"), "1", eur(cfg.licensing_capex_eur), eur(cfg.licensing_capex_eur)])
     if cfg.other_capex_eur:
         rows.append([T("Outros custos de investimento"), "1", eur(cfg.other_capex_eur), eur(cfg.other_capex_eur)])
     rows.append([T("Capex total"), "", "", eur(m["Capex (EUR)"])])
@@ -484,13 +495,23 @@ def to_docx(res, vname: str, buf, price_scen: dict | None = None, sens_pct: floa
         rows.append([T("Opex bateria"), f"{num(v.bess_kwh)} kWh", f"{num(cfg.bess_opex_eur_kwh_yr, 2)} EUR/kWh",
                      eur(v.bess_kwh * cfg.bess_opex_eur_kwh_yr)])
     if cfg.om_eur_yr:
-        rows.append([T("O&M fixo"), "1", eur(cfg.om_eur_yr), eur(cfg.om_eur_yr)])
+        rows.append([T("O&M fixo"), "365 " + T("dias"), f"{num(cfg.om_eur_yr / 365, 2)} EUR/{T('dia')}", eur(cfg.om_eur_yr)])
     if cfg.insurance_eur_yr:
-        rows.append([T("Seguro"), "1", eur(cfg.insurance_eur_yr), eur(cfg.insurance_eur_yr)])
+        rows.append([T("Seguro"), "365 " + T("dias"), f"{num(cfg.insurance_eur_yr / 365, 2)} EUR/{T('dia')}", eur(cfg.insurance_eur_yr)])
     if rows:
         rows.append([T("Opex do 1.º ano"), "", "", eur(m["Opex (EUR/ano)"])])
         table(doc, [T("Custo anual"), T("Quantidade"), T("Preço unitário"), T("Total")], rows,
               widths=[6.5, 3, 3.5, 3], total_last=True)
+    rt = getattr(res, "rates", None)
+    if rt is not None and len(rt):
+        heading(doc, T("Preços aplicados por ano"), 2)
+        ycols = [c for c in rt.columns if isinstance(c, (int, np.integer))]
+        pick = sorted({ycols[0], ycols[min(4, len(ycols) - 1)], ycols[min(9, len(ycols) - 1)], ycols[-1]})
+        table(doc, [T("Item"), T("Unidade")] + [str(y) for y in pick],
+              [[T(x["Item"]), x["Unidade"]] + [num(x[y], 2) for y in pick] for _, x in rt.iterrows()],
+              widths=[6, 2.5] + [2] * len(pick))
+        caption(doc, T("Preços médios de mercado e custos aplicados, com escalada, ajustes e comissões. "
+                       "A tabela completa, ano a ano, está no Excel (folha Preços por ano)."))
     if m.get("Augmentation e substituições (EUR)"):
         para(doc, T("Reposição de capacidade e substituições ao longo do projeto: {x}.").format(
             x=eur(m["Augmentation e substituições (EUR)"])))

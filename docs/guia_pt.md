@@ -24,7 +24,7 @@ Para começar um projeto novo, carrega em **➕ Novo projeto** (por cima dos sep
 
 ## 2. Preencher os separadores
 
-**1. Local e consumo.** Nome, latitude e longitude (a produção PV vem do PVGIS para essas coordenadas). Em **Consumo do local** escolhe um perfil tipo C&I com o consumo anual, carrega um diagrama de carga em CSV (uma coluna em kW, 15 minutos ou horária) ou escolhe "Sem consumo" para parques só de produção e armazenamento. Indica os limites de importação e de injeção na rede, se existirem.
+**1. Local e consumo.** Nome, cenário (opcional, ex.: Investment Grade), latitude e longitude (a produção PV vem do PVGIS para essas coordenadas). Em **Consumo do local** escolhe um perfil tipo C&I com o consumo anual, carrega um diagrama de carga em CSV (uma coluna em kW, 15 minutos ou horária) ou escolhe "Sem consumo" para parques só de produção e armazenamento. Indica os limites de importação e de injeção na rede, se existirem.
 
 **2. PV e bateria.** Inclinação, azimute (180 = sul), perdas, rácio DC/AC, degradação e custos unitários do PV. Para a bateria: eficiência, janela de SOC, perda de capacidade, custo de desgaste, limite de ciclos por dia e custos. Os blocos "Mais parâmetros da bateria" e "Degradação, fim de vida e substituições" têm opções avançadas (degradação por ciclos, reposição de capacidade, substituição do PCS).
 
@@ -32,10 +32,10 @@ Para começar um projeto novo, carrega em **➕ Novo projeto** (por cima dos sep
 
 - **Mercados:** período de preços OMIE (os 12 meses até à data escolhida), arbitragem no diário, aFRR, intradiário e mFRR. Nos serviços de sistema, a taxa de ativação e as "ofertas aceites" têm grande impacto. A GridCog usa 50% de ofertas aceites.
 - **Tarifas:** nível de tensão (tarifas de acesso ERSE), outros custos na compra e venda do PV ao mercado ou a preço fixo (PPA).
-- **Finanças:** ano de início, duração, taxa de desconto, custos de O&M, seguro, escalada de preços e valor residual. Em **Financiamento e impostos** podes juntar dívida e IRC. Com estes a zero, o caso é antes de impostos e só com capital próprio, como na GridCog.
+- **Finanças:** ano de início, duração, taxa de desconto, licenciamento e ligação à rede (separado do capex do equipamento), custos de O&M e seguro (em EUR/ano ou EUR/dia), fator de emissões da rede, escalada de preços e valor residual. Em **Financiamento e impostos** podes juntar dívida e IRC. Com estes a zero, o caso é antes de impostos e só com capital próprio, como na GridCog.
 - **Modo rápido** simula o 1.º e o último ano e interpola os restantes. É suficiente para comparar variantes. Desliga-o para uma corrida final mais rigorosa.
 
-**4. Variantes.** Uma linha por configuração a comparar: kWp de PV, kWh e kW de bateria. Se souberes o capex total de uma variante, escreve-o em "Capex total (EUR)". Nesse caso substitui o cálculo pelos custos unitários.
+**4. Variantes.** Uma linha por configuração a comparar: kWp de PV, kWh e kW de bateria. Se souberes o capex total de uma variante, escreve-o em "Capex total (EUR)". Nesse caso substitui o cálculo pelos custos unitários. Para ver o valor da bateria, junta uma linha só com PV.
 
 ## 3. Correr e ler os resultados
 
@@ -47,6 +47,10 @@ Carrega em **Correr simulação**. Uma simulação demora normalmente entre 15 s
 - **Despacho num dia:** escolhe uma variante e um dia para ver o que fazem o PV, a bateria e a rede, com o preço OMIE.
 - **Contas anuais:** receitas, opex, EBITDA, capex, cashflow e, se houver financiamento, imposto, juros, DSCR e cashflow do acionista.
 - **Riscos e sensibilidades:** o gráfico tornado mostra quanto muda o VAL quando cada fator sobe ou desce. **Correr cenários de preços** volta a simular com os preços dos anos anteriores e dá o P90, P50 e P10 do VAL. P90 é o valor mais prudente.
+- **Energia no 1.º ano** e **Cenário base e valor incremental:** compara uma variante com a base (sem ativos) ou com outra variante (ex.: PV + bateria face a só PV), com o VAL e a TIR incrementais e o cashflow relativo ano a ano.
+- **Preços aplicados por ano:** preços médios de mercado (diário, intradiário, aFRR, mFRR), PPA, O&M e seguro usados em cada ano.
+- **Fluxos de energia entre ativos e emissões evitadas:** PV para a rede, PV para a bateria, bateria para a rede, etc., e as toneladas de CO2 evitadas.
+- Ao correr vários projetos de uma vez, **Cenários lado a lado** mostra os totais de cada cenário (ex.: Investment Grade e Ultra Conservative) e cada parque em cada cenário.
 - **Auditoria da execução:** versão do motor, dados usados e verificações automáticas do balanço de energia e dos limites.
 
 ## 4. Exportar

@@ -33,7 +33,7 @@ def config_from_dict(d: dict) -> ProjectConfig:
         variants.append(Variant(str(r["Variante"]), _f(r, "PV (kWp)", 0.0), _f(r, "BESS (kWh)", 0.0),
                                 _f(r, "BESS (kW)", 0.0), capex_eur=None if cap in (None, "") else float(cap)))
     return ProjectConfig(
-        name=d.get("Nome do projeto", "Projeto"), lat=_f(d, "Latitude", 38.96), lon=_f(d, "Longitude", -9.33),
+        name=d.get("Nome do projeto", "Projeto"), scenario=str(d.get("Cenário", "") or ""), lat=_f(d, "Latitude", 38.96), lon=_f(d, "Longitude", -9.33),
         load_kw=d.get("Diagrama de carga (kW)") if str(load_mode).startswith("Carregar") else None,
         annual_load_mwh=0.0 if load_mode.startswith("Sem consumo") else _f(d, "Consumo anual (MWh)", 4666.4),
         voltage_level=None if str(lvl).startswith("Sem") else lvl,
@@ -44,7 +44,9 @@ def config_from_dict(d: dict) -> ProjectConfig:
         ppa_price_eur_mwh=_f(d, "Preço fixo no 1.º ano (EUR/MWh)", 45.9)
         if d.get("Venda da energia PV injetada") == "Preço fixo (PPA)" else None,
         ppa_escalation_eur_mwh_yr=_f(d, "Aumento anual do preço fixo (EUR/MWh por ano)", 0.0),
-        other_capex_eur=_f(d, "Capex adicional (EUR)", 0.0), om_eur_yr=_f(d, "O&M no 1.º ano (EUR/ano)", 0.0),
+        other_capex_eur=_f(d, "Capex adicional (EUR)", 0.0),
+        licensing_capex_eur=_f(d, "Licenciamento e ligação à rede (EUR)", 0.0),
+        emission_factor_g_kwh=_f(d, "Fator de emissões da rede (g CO2/kWh)", 100.0), om_eur_yr=_f(d, "O&M no 1.º ano (EUR/ano)", 0.0),
         om_escalation_yr=_f(d, "Crescimento anual do O&M (%)", 2.0) / 100,
         insurance_eur_yr=_f(d, "Seguro no 1.º ano (EUR/ano)", 0.0),
         insurance_change_yr=_f(d, "Variação anual do seguro (% do valor inicial)", 0.0) / 100,
@@ -93,18 +95,76 @@ def config_from_dict(d: dict) -> ProjectConfig:
         variants=variants)
 
 
+def park_and_scenario(d_or_name, scenario: str | None = None) -> tuple[str, str]:
+    """Parque e cenário de um projeto. Usa o campo "Cenário" se existir; senão o texto entre parênteses
+    no fim do nome (ex.: "Lousal (Investment Grade)" -> "Lousal", "Investment Grade")."""
+    name = d_or_name.get("Nome do projeto", "Projeto") if isinstance(d_or_name, dict) else str(d_or_name)
+    if scenario is None and isinstance(d_or_name, dict):
+        scenario = d_or_name.get("Cenário")
+    scenario = (scenario or "").strip()
+    park = name.strip()
+    if park.endswith(")") and "(" in park:
+        i = park.rfind("(")
+        inner = park[i + 1:-1].strip()
+        if not scenario or inner == scenario:
+            park, scenario = park[:i].strip(), scenario or inner
+    elif scenario and park.endswith(scenario):
+        park = park[: -len(scenario)].strip(" -–_|")
+    return park or name, scenario or "Base"
+
+
 def portfolio_table(results: list) -> pd.DataFrame:
     rows = []
     for res in results:
+        park, scen = park_and_scenario(res.config.name, getattr(res.config, "scenario", None))
         for r in res.variants:
             m = dict(r.metrics)
-            rows.append({"Projeto": res.config.name, **m})
+            rows.append({"Projeto": res.config.name, "Parque": park, "Cenário": scen, **m})
     return pd.DataFrame(rows)
+
+
+def scenario_comparison(results: list) -> dict:
+    """Cenários lado a lado: por parque (melhor variante de cada projeto) e totais por cenário.
+
+    Os totais somam os cashflows dos parques ano a ano, por isso a TIR do cenário é a da carteira."""
+    from .finance import irr
+    rows, cfs = [], {}
+    for res in results:
+        if not res.variants:
+            continue
+        park, scen = park_and_scenario(res.config.name, getattr(res.config, "scenario", None))
+        r = max(res.variants, key=lambda x: x.metrics["VAL (EUR)"])
+        m = r.metrics
+        rows.append({"Parque": park, "Cenário": scen, "Variante": r.variant.name, "Capex (EUR)": m["Capex (EUR)"],
+                     "Ganho 1.º ano face à base (EUR)": m["Ganho 1.º ano face à base (EUR)"],
+                     "EBITDA 1.º ano (EUR)": m["EBITDA 1.º ano (EUR)"], "VAL (EUR)": m["VAL (EUR)"], "TIR": m["TIR"],
+                     "Emissões evitadas 1.º ano (t CO2)": m.get("Emissões evitadas 1.º ano (t CO2)"),
+                     "_rate": res.config.discount_rate})
+        cfs.setdefault(scen, []).append(r.cashflows)
+    per = pd.DataFrame(rows)
+    if per.empty:
+        return {"per_park": per, "totals": per, "cashflows": pd.DataFrame()}
+    tot = []
+    cf_tot = {}
+    for scen, g in per.groupby("Cenário", sort=False):
+        cf = pd.concat(cfs[scen], axis=1).fillna(0.0).sum(axis=1).sort_index()
+        cf_tot[scen] = cf
+        tot.append({"Cenário": scen, "Parques": len(g), "Capex (EUR)": g["Capex (EUR)"].sum(),
+                    "Ganho 1.º ano face à base (EUR)": g["Ganho 1.º ano face à base (EUR)"].sum(),
+                    "EBITDA 1.º ano (EUR)": g["EBITDA 1.º ano (EUR)"].sum(), "VAL (EUR)": g["VAL (EUR)"].sum(),
+                    "TIR": irr(cf.values), "Emissões evitadas 1.º ano (t CO2)": g["Emissões evitadas 1.º ano (t CO2)"].sum()})
+    return {"per_park": per.drop(columns="_rate"), "totals": pd.DataFrame(tot), "cashflows": pd.DataFrame(cf_tot)}
 
 
 def portfolio_excel(results: list, path_or_buffer) -> None:
     with pd.ExcelWriter(path_or_buffer) as xw:
         portfolio_table(results).to_excel(xw, sheet_name="Carteira", index=False)
+        sc = scenario_comparison(results)
+        if not sc["totals"].empty:
+            sc["totals"].to_excel(xw, sheet_name="Cenários", index=False)
+            sc["per_park"].pivot_table(index="Parque", columns="Cenário", values=["Capex (EUR)", "VAL (EUR)", "TIR"],
+                                       aggfunc="first").to_excel(xw, sheet_name="Cenários por parque")
+            sc["cashflows"].to_excel(xw, sheet_name="Cashflows por cenário")
         cfs = {}
         for res in results:
             for r in res.variants:

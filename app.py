@@ -32,7 +32,8 @@ for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.p
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
-from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table
+from gridforce.presets import config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
+from gridforce.project import compare as compare_variants
 from gridforce import sensitivity as sens
 from gridforce import library as lib
 from gridforce.version import VERSION, DATE as VERSION_DATE
@@ -288,6 +289,10 @@ with tab_site:
     c1, c2 = st.columns(2)
     with c1:
         name = st.text_input(T("Nome do projeto"), P("Nome do projeto", "Shopping Centre"))
+        scenario = st.text_input(T("Cenário (opcional)"), P("Cenário", ""),
+                                 help=T("Ex.: Investment Grade ou Ultra Conservative. Ao correr vários projetos, os "
+                                      "cenários aparecem lado a lado. Se ficar vazio, usa o texto entre parênteses "
+                                      "no fim do nome do projeto."))
         lat = st.number_input(T("Latitude"), value=P("Latitude", 38.96), format="%.4f")
         lon = st.number_input(T("Longitude"), value=P("Longitude", -9.33), format="%.4f")
     with c2:
@@ -414,11 +419,31 @@ with tab_mkt:
                            help=T("Dia a dia: a bateria só conhece os preços do dia seguinte, como no mercado diário real, "
                                 "e volta ao estado de carga inicial no fim de cada dia."))
         st.subheader(T("Outros custos do projeto"))
+        lic_capex = st.number_input(T("Licenciamento e ligação à rede (EUR)"),
+                                    value=P("Licenciamento e ligação à rede (EUR)", 0.0), min_value=0.0,
+                                    help=T("Custo de investimento separado do equipamento: licenças, estudos, "
+                                         "ramal e ligação à rede. Soma-se ao capex de cada variante."))
         other_capex = st.number_input(T("Capex adicional (EUR)"), value=P("Capex adicional (EUR)", 0.0), min_value=0.0,
-                                      help=T("Licenciamento, ligação à rede, desenvolvimento..."))
-        om = st.number_input(T("O&M no 1.º ano (EUR/ano)"), value=P("O&M no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+                                      help=T("Outros custos de investimento: desenvolvimento, etc. Projetos antigos "
+                                           "podem ter aqui o licenciamento e a ligação à rede (o resultado é o mesmo)."))
+        UNITS = ["EUR/ano", "EUR/dia"]
+        unit = st.radio(T("Unidade do O&M e do seguro"), UNITS, format_func=T, horizontal=True,
+                        index=UNITS.index(P("Unidade do O&M e seguro", "EUR/ano")) if P("Unidade do O&M e seguro", "EUR/ano") in UNITS else 0)
+        _k = 365.0 if unit == "EUR/dia" else 1.0
+        for _u in UNITS:  # o campo da outra unidade volta a ser criado a partir do valor anual atual
+            if _u != unit:
+                st.session_state.pop(f"{PRESET_ID}|O&M no 1.º ano (EUR/ano)|{_u}", None)
+                st.session_state.pop(f"{PRESET_ID}|Seguro no 1.º ano (EUR/ano)|{_u}", None)
+        _om_last = st.session_state.get(f"{PRESET_ID}|om_annual", P("O&M no 1.º ano (EUR/ano)", 0.0))
+        _ins_last = st.session_state.get(f"{PRESET_ID}|ins_annual", P("Seguro no 1.º ano (EUR/ano)", 0.0))
+        om = st.number_input(T("O&M no 1.º ano ({u})").format(u=T(unit)), value=round(float(_om_last or 0.0) / _k, 3),
+                             min_value=0.0, key=f"{PRESET_ID}|O&M no 1.º ano (EUR/ano)|{unit}") * _k
         om_esc = st.number_input(T("Crescimento anual do O&M (%)"), value=P("Crescimento anual do O&M (%)", 2.0)) / 100
-        ins = st.number_input(T("Seguro no 1.º ano (EUR/ano)"), value=P("Seguro no 1.º ano (EUR/ano)", 0.0), min_value=0.0)
+        ins = st.number_input(T("Seguro no 1.º ano ({u})").format(u=T(unit)), value=round(float(_ins_last or 0.0) / _k, 3),
+                              min_value=0.0, key=f"{PRESET_ID}|Seguro no 1.º ano (EUR/ano)|{unit}") * _k
+        st.session_state[f"{PRESET_ID}|om_annual"], st.session_state[f"{PRESET_ID}|ins_annual"] = om, ins
+        if unit == "EUR/dia" and (om or ins):
+            st.caption(T("Por ano: O&M {a} EUR, seguro {b} EUR.").format(a=f"{om:,.0f}", b=f"{ins:,.0f}"))
         ins_chg = st.number_input(T("Variação anual do seguro (% do valor inicial)"), value=P("Variação anual do seguro (% do valor inicial)", 0.0),
                                   help=T("Linear. Ex.: -2 reduz o seguro 2% do valor inicial por ano.")) / 100
         bsp_fee = st.number_input(T("Comissão do agregador/BSP (% das receitas de serviços de sistema)"),
@@ -427,6 +452,9 @@ with tab_mkt:
                               help=T("Aplica-se a mercados, serviços de sistema e tarifas. O preço fixo (PPA) tem o seu próprio aumento.")) / 100
         resid = st.number_input(T("Valor residual no fim (% do capex)"), value=P("Valor residual (% do capex)", 0.0),
                                 min_value=0.0, max_value=100.0) / 100
+        emf = st.number_input(T("Fator de emissões da rede (g CO2/kWh)"), value=P("Fator de emissões da rede (g CO2/kWh)", 100.0),
+                              min_value=0.0, help=T("Média da rede portuguesa, para calcular as emissões evitadas. "
+                                                  "Ajusta ao valor que a equipa usar."))
         with st.expander(T("Financiamento e impostos")):
             st.caption(T("Com imposto e dívida a zero, o caso é antes de impostos e só com capital próprio (como a GridCog)."))
             tax = st.number_input(T("Imposto sobre lucros, IRC + derrama (%)"), value=P("Imposto sobre lucros (%)", 0.0),
@@ -444,6 +472,8 @@ with tab_mkt:
 with tab_var:
     st.write(T("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
              "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh."))
+    st.caption(T("Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria "
+               "nos resultados, em \"Cenário base e valor incremental\"."))
     variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
                                  column_config={c: st.column_config.Column(T(c)) for c in
                                                 ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)")})
@@ -477,6 +507,8 @@ def _current_project() -> dict:
         "Aumento anual do preço fixo (EUR/MWh por ano)": ppa_esc, "Ano de início": int(start_year),
         "Duração (anos)": int(years), "Taxa de desconto (%)": disc * 100, "Modo rápido": fast,
         "Horizonte do despacho": hor, "Capex adicional (EUR)": other_capex, "O&M no 1.º ano (EUR/ano)": om,
+        "Licenciamento e ligação à rede (EUR)": lic_capex, "Unidade do O&M e seguro": unit,
+        "Fator de emissões da rede (g CO2/kWh)": emf, "Cenário": scenario,
         "Crescimento anual do O&M (%)": om_esc * 100, "Seguro no 1.º ano (EUR/ano)": ins,
         "Variação anual do seguro (% do valor inicial)": ins_chg * 100, "Comissão do agregador/BSP (%)": bsp_fee * 100,
         "Escalada anual dos preços (%)": esc * 100, "Valor residual (% do capex)": resid * 100,
@@ -538,12 +570,12 @@ if run:
                   capex_eur=_num(r.get("Capex total (EUR)"), None))
           for _, r in variants_df.dropna(subset=["Variante"]).iterrows()]
     cfg = ProjectConfig(
-        name=name, lat=lat, lon=lon, annual_load_mwh=annual or 0.0, load_kw=load_kw,
+        name=name, scenario=scenario, lat=lat, lon=lon, annual_load_mwh=annual or 0.0, load_kw=load_kw,
         voltage_level=None if lvl.startswith("Sem") else lvl,
         import_limit_kw=imp_lim or 1e6, export_limit_kw=exp_lim or 1e6,
         extra_import_eur_mwh=extra, export_fee_eur_mwh=fee,
         ppa_price_eur_mwh=ppa if sale == "Preço fixo (PPA)" else None, ppa_escalation_eur_mwh_yr=ppa_esc,
-        other_capex_eur=other_capex, om_eur_yr=om, om_escalation_yr=om_esc, insurance_eur_yr=ins,
+        other_capex_eur=other_capex, licensing_capex_eur=lic_capex, emission_factor_g_kwh=emf, om_eur_yr=om, om_escalation_yr=om_esc, insurance_eur_yr=ins,
         insurance_change_yr=ins_chg,
         pv_tilt=tilt, pv_azimuth=az, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
         pv_capex_eur_kwp=pv_capex if pv_capex is not None else 0.0, pv_opex_eur_kwp_yr=pv_opex,
@@ -586,6 +618,31 @@ with tab_res:
         k3.metric(T("Ganho total 1.º ano"), f"{pt['Ganho 1.º ano face à base (EUR)'].sum():,.0f} EUR")
         pbuf = io.BytesIO()
         portfolio_excel(port, pbuf)
+        sc = scenario_comparison(port)
+        if not sc["totals"].empty and len(sc["totals"]) > 1:
+            st.subheader(T("Cenários lado a lado"))
+            st.caption(T("Para cada projeto conta a variante com maior VAL. A TIR do cenário é a dos cashflows "
+                       "de todos os parques somados."))
+            st.dataframe(TD(sc["totals"]).style.format(TF({
+                "Capex (EUR)": "{:,.0f}", "Ganho 1.º ano face à base (EUR)": "{:,.0f}", "EBITDA 1.º ano (EUR)": "{:,.0f}",
+                "VAL (EUR)": "{:,.0f}", "TIR": lambda x: T("n.d.") if x is None or pd.isna(x) else f"{x * 100:.1f}%",
+                "Emissões evitadas 1.º ano (t CO2)": "{:,.0f}"})), width="stretch", hide_index=True)
+            pp = sc["per_park"]
+            c1, c2 = st.columns(2)
+            with c1:
+                wide = pp.pivot_table(index="Parque", columns="Cenário", values="VAL (EUR)", aggfunc="first", sort=False)
+                wide_t = pp.pivot_table(index="Parque", columns="Cenário", values="TIR", aggfunc="first", sort=False)
+                both = pd.concat({T("VAL (EUR)"): wide, T("TIR"): wide_t}, axis=1)
+                both.columns = [f"{a} · {b}" for a, b in both.columns]
+                _pf = lambda x: "" if x is None or pd.isna(x) else f"{x * 100:.1f}%"
+                _ef = lambda x: "" if x is None or pd.isna(x) else f"{x:,.0f}"
+                st.dataframe(both.style.format({c: (_pf if c.startswith(T("TIR")) else _ef) for c in both.columns}),
+                             width="stretch")
+            with c2:
+                fig = px.bar(pp, x="Parque", y="VAL (EUR)", color="Cenário", barmode="group",
+                             labels={"Parque": T("Parque"), "VAL (EUR)": T("VAL (EUR)"), "Cenário": T("Cenário")})
+                fig.update_layout(height=360, margin=dict(t=30))
+                st.plotly_chart(_style(fig), width="stretch")
         st.download_button(T("Descarregar carteira (Excel)"), translate_xlsx(pbuf.getvalue()), file_name="GridForce_carteira.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.divider()
@@ -753,6 +810,106 @@ with tab_res:
         st.subheader(T("Energia no 1.º ano"))
         en = pd.DataFrame({T("Base"): res.baseline_energy, **{x.variant.name: x.energy_y1 for x in res.variants}})
         st.dataframe(TD(en).style.format("{:,.1f}"), width="stretch")
+
+        # ---------------------------------------------- cenário base e valor incremental
+        st.subheader(T("Cenário base e valor incremental"))
+        st.caption(T("O cenário base é o local sem PV nem bateria. Todos os resultados acima são o ganho face a "
+                   "esta base. Aqui podes comparar duas variantes entre si (ex.: PV + bateria face a só PV, para "
+                   "ver o valor da bateria) ou uma variante com a base."))
+        _bs = {k: v for k, v in res.baseline_streams.items() if abs(v) > 0.5}
+        if _bs:
+            st.dataframe(TD(pd.Series(_bs, name=T("Base, 1.º ano (EUR)")).rename(index=T).to_frame()).style.format("{:,.0f}"),
+                         width="stretch")
+        else:
+            st.caption(T("Neste projeto a base não tem custos nem receitas (sem consumo), por isso o valor face à base "
+                       "é o valor total dos ativos."))
+        _BASE = T("Cenário base (sem ativos)")
+        _vn = [x.variant.name for x in res.variants]
+        c1, c2 = st.columns(2)
+        with c1:
+            a_name = st.selectbox(T("Variante A"), _vn, index=_vn.index(best["Variante"]), key="cmp_a")
+        with c2:
+            _opts_b = [_BASE] + [n for n in _vn if n != a_name]
+            b_name = st.selectbox(T("Comparar com (B)"), _opts_b, key="cmp_b")
+        ra_ = next(x for x in res.variants if x.variant.name == a_name)
+        rb_ = None if b_name == _BASE else next(x for x in res.variants if x.variant.name == b_name)
+        cmpr = compare_variants(ra_, rb_, res.config.discount_rate)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(T("VAL de A face a B"), f"{cmpr['npv']:,.0f} EUR")
+        m2.metric(T("TIR incremental"), T("n.d.") if cmpr["irr"] is None else f"{cmpr['irr'] * 100:.1f}%")
+        _cb = rb_.metrics["Capex (EUR)"] if rb_ else 0.0
+        _gb = rb_.metrics["Ganho 1.º ano face à base (EUR)"] if rb_ else 0.0
+        m3.metric(T("Capex adicional de A"), f"{ra_.metrics['Capex (EUR)'] - _cb:,.0f} EUR")
+        m4.metric(T("Ganho 1.º ano de A face a B"), f"{ra_.metrics['Ganho 1.º ano face à base (EUR)'] - _gb:,.0f} EUR")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(T("**Cashflow relativo (A - B)**"))
+            tb = cmpr["table"]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=tb.index, y=tb["Diferença (A - B)"], name=T("Diferença (A - B)")))
+            fig.add_trace(go.Scatter(x=tb.index, y=tb["Diferença descontada acumulada"], mode="lines",
+                                     name=T("Diferença descontada acumulada")))
+            fig.add_hline(y=0, line_dash="dot")
+            fig.update_layout(height=380, margin=dict(t=60), yaxis_title="EUR",
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            st.plotly_chart(_style(fig), width="stretch")
+        with c2:
+            st.markdown(T("**Value stack do 1.º ano: A - B**"))
+            sb = rb_.yearly_streams.iloc[0] if rb_ else pd.Series(res.baseline_streams)
+            dd = (ra_.yearly_streams.iloc[0] - sb.reindex(ra_.yearly_streams.columns).fillna(0.0))
+            dd = dd[dd.abs() > 1]
+            fig = px.bar(x=dd.values, y=[T(k) for k in dd.index], orientation="h", labels={"x": "EUR", "y": ""})
+            fig.update_layout(height=380, margin=dict(t=60))
+            st.plotly_chart(_style(fig), width="stretch")
+        with st.expander(T("Cashflow relativo por ano")):
+            st.dataframe(TD(cmpr["table"]).style.format("{:,.0f}"), width="stretch")
+
+        # ---------------------------------------------- preços aplicados
+        if res.rates is not None and len(res.rates):
+            st.subheader(T("Preços aplicados por ano"))
+            st.caption(T("Preços médios de mercado e custos usados em cada ano, já com escalada, ajuste aFRR e "
+                       "comissões. Serve para auditar os pressupostos."))
+            rt = res.rates.copy()
+            rt["Item"] = rt["Item"].map(T)
+            rt["Unidade"] = rt["Unidade"].map(T)
+            ycols = [c for c in rt.columns if not isinstance(c, str)]
+            rt.columns = [str(c) for c in rt.columns]
+            st.dataframe(TD(rt).style.format({str(c): "{:,.2f}" for c in ycols}), width="stretch", hide_index=True,
+                         height=36 * (len(rt) + 1) + 4)
+
+        # ---------------------------------------------- fluxos de energia e emissões
+        st.subheader(T("Fluxos de energia entre ativos e emissões evitadas"))
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            vname_f = st.selectbox(T("Variante   "), _vn, index=_vn.index(best["Variante"]), key="flow_pick")
+            rf = next(x for x in res.variants if x.variant.name == vname_f)
+            if rf.flows_y1:
+                st.dataframe(TD(pd.Series(rf.flows_y1, name=T("MWh no 1.º ano")).rename(index=T).to_frame())
+                             .style.format("{:,.0f}"), width="stretch")
+            if rf.emissions is not None:
+                em = rf.emissions["Emissões evitadas (t CO2)"]
+                st.metric(T("Emissões evitadas no 1.º ano"), f"{em.iloc[0]:,.0f} t CO2")
+                st.metric(T("Emissões evitadas no projeto"), f"{em.sum():,.0f} t CO2")
+                st.caption(T("Face à base, com {f} g CO2/kWh.").format(f=f"{res.config.emission_factor_g_kwh:,.0f}"))
+        with c2:
+            if rf.flows_y1:
+                nodes = [T("PV"), T("Bateria"), T("Rede"), T("Consumo"), T("Bateria"), T("Rede")]
+                # origens: 0 PV, 1 Bateria, 2 Rede; destinos: 3 Consumo, 4 Bateria, 5 Rede
+                links = {"PV → consumo": (0, 3), "PV → bateria": (0, 4), "PV → rede": (0, 5),
+                         "Bateria → consumo": (1, 3), "Bateria → rede": (1, 5), "Rede → consumo": (2, 3),
+                         "Rede → bateria": (2, 4)}
+                src, tgt, val = [], [], []
+                for k, (a_, b_) in links.items():
+                    if rf.flows_y1.get(k, 0) > 0.5:
+                        src.append(a_); tgt.append(b_); val.append(rf.flows_y1[k])
+                if val:
+                    fig = go.Figure(go.Sankey(
+                        node=dict(label=nodes, pad=18, thickness=18,
+                                  color=["#AEC000", "#4FB3A5", "#9AA79A", "#EEF2EA", "#4FB3A5", "#9AA79A"]),
+                        link=dict(source=src, target=tgt, value=val, color="rgba(174,192,0,0.35)"),
+                        valueformat=",.0f", valuesuffix=" MWh"))
+                    fig.update_layout(height=380, margin=dict(t=20, b=20))
+                    st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader(T("Relatório e exportação"))
         _names = [x.variant.name for x in res.variants]

@@ -37,6 +37,7 @@ class Variant:
 @dataclass
 class ProjectConfig:
     name: str = "Novo projeto"
+    scenario: str = ""                        # cenário a que o projeto pertence (ex.: Investment Grade), para comparar
     lat: float = 38.96
     lon: float = -9.33
     # consumo
@@ -81,7 +82,9 @@ class ProjectConfig:
     bess_aux_kw_per_mw: float = 0.0           # consumos auxiliares (kW por MW de bateria), sempre ligados
     bess_opex_eur_kwh_yr: float = 0.0
     # custos do projeto (além dos custos por kWp/kWh)
-    other_capex_eur: float = 0.0              # licenciamento, ligação à rede, etc.
+    other_capex_eur: float = 0.0              # outros custos de investimento (desenvolvimento, etc.)
+    licensing_capex_eur: float = 0.0          # licenciamento e ligação à rede (separado do equipamento)
+    emission_factor_g_kwh: float = 100.0      # fator de emissões da rede (g CO2/kWh), para as emissões evitadas
     om_eur_yr: float = 0.0                    # O&M fixo no 1.º ano
     om_escalation_yr: float = 0.0             # crescimento composto anual do O&M
     insurance_eur_yr: float = 0.0             # seguro no 1.º ano
@@ -135,6 +138,9 @@ class VariantResult:
     dispatch_y1: pd.DataFrame
     annual: pd.DataFrame | None = None    # receitas, opex, EBITDA, capex, valor residual, cashflow por ano
     parts: dict | None = None             # peças do cashflow, para sensibilidades sem voltar a simular
+    capex_parts: dict | None = None       # capex por componente (equipamento, licenciamento, outros)
+    flows_y1: dict | None = None          # fluxos de energia entre ativos no 1.º ano (MWh)
+    emissions: pd.DataFrame | None = None # emissões evitadas por ano face à base (t CO2)
 
 
 @dataclass
@@ -144,6 +150,7 @@ class ProjectResult:
     baseline_energy: dict
     variants: list[VariantResult]
     audit: dict | None = None
+    rates: pd.DataFrame | None = None     # preços e custos aplicados em cada ano (auditoria)
 
 
 def _inputs(cfg: ProjectConfig):
@@ -282,8 +289,12 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             if c_ != ppa_col:
                 ys[c_] = ys[c_].values * esc
         net_vs_base = (ys.sum(axis=1).values - base_net * esc).tolist()
-        capex = (v.capex_eur if v.capex_eur is not None
-                 else v.pv_kwp * cfg.pv_capex_eur_kwp + v.bess_kwh * cfg.bess_capex_eur_kwh) + cfg.other_capex_eur
+        capex_equip = (v.capex_eur if v.capex_eur is not None
+                       else v.pv_kwp * cfg.pv_capex_eur_kwp + v.bess_kwh * cfg.bess_capex_eur_kwh)
+        capex = capex_equip + cfg.licensing_capex_eur + cfg.other_capex_eur
+        capex_parts = {"Equipamento (PV e bateria)": capex_equip,
+                       "Licenciamento e ligação à rede": cfg.licensing_capex_eur,
+                       "Outros custos de investimento": cfg.other_capex_eur}
         yrs = np.arange(cfg.years)
         opex_y = (v.pv_kwp * cfg.pv_opex_eur_kwp_yr + v.bess_kwh * cfg.bess_opex_eur_kwh_yr
                   + cfg.om_eur_yr * (1 + cfg.om_escalation_yr) ** yrs
@@ -320,6 +331,8 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             annual["Cashflow do acionista"] = fin["equity_cf"]
         disc_f = 1 / (1 + cfg.discount_rate) ** np.arange(1, cfg.years + 1)
         e1 = annual_energy(d1)
+        flows = energy_flows(d1)
+        emis = _emissions(cfg, e1, annual_energy(base.df))
         # energia descarregada (direta + ativações a subir) ao longo da vida, aproximada pelo 1.º ano
         # com a perda de capacidade linear
         fade = np.array(soh_path)
@@ -345,6 +358,7 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
             "Estado de saúde no fim (%)": 100 * soh_path[-1] if v.bess_kwh else None,
             "Augmentation e substituições (EUR)": float(repl.sum()),
             "Custo nivelado do PV e bateria (EUR/MWh PV)": lcoe,
+            "Emissões evitadas 1.º ano (t CO2)": float(emis.iloc[0, -1]),
         }
         if fin:
             metrics.update({
@@ -360,8 +374,109 @@ def run_project(cfg: ProjectConfig, progress=None) -> ProjectResult:
         delta = ys - base_y.mul(esc, axis=0)
         parts = dict(delta=delta, capex=capex, opex_y=np.asarray(opex_y, dtype=float), repl=repl,
                      residual=residual, discount_rate=cfg.discount_rate, start_year=cfg.start_year)
-        results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1, annual, parts))
-    return ProjectResult(cfg, base_st, annual_energy(base.df), results, audit=_audit(cfg, idx, mkt, results))
+        results.append(VariantResult(v, metrics, ys, ic["cashflows"], e1, d1, annual, parts,
+                                     capex_parts=capex_parts, flows_y1=flows, emissions=emis))
+    return ProjectResult(cfg, base_st, annual_energy(base.df), results, audit=_audit(cfg, idx, mkt, results),
+                         rates=rates_table(cfg, mkt, site, tar))
+
+
+def energy_flows(df: pd.DataFrame) -> dict:
+    """Fluxos de energia entre ativos no ano (MWh), repartidos em cada intervalo de 15 min.
+
+    O PV abastece primeiro o consumo, depois a bateria e o resto vai para a rede; a bateria descarrega
+    primeiro para o consumo e o resto vai para a rede; a rede cobre o consumo e a carga em falta."""
+    mwh = 0.25 / 1000
+    pv, load, ch, dis = (df[c].values.astype(float) for c in ("pv", "load", "ch", "dis"))
+    pl = np.minimum(pv, load)
+    pb = np.minimum(pv - pl, ch)
+    pg = pv - pl - pb
+    bl = np.minimum(dis, load - pl)
+    bg = dis - bl
+    gl = np.maximum(load - pl - bl, 0.0)
+    gb = ch - pb
+    return {k: float(v.sum() * mwh) for k, v in {
+        "PV → consumo": pl, "PV → bateria": pb, "PV → rede": pg, "Bateria → consumo": bl,
+        "Bateria → rede": bg, "Rede → consumo": gl, "Rede → bateria": gb}.items()}
+
+
+def _emissions(cfg: ProjectConfig, e1: dict, eb: dict) -> pd.DataFrame:
+    """Emissões evitadas face à base: menos energia comprada à rede e mais energia renovável injetada.
+
+    Usa um fator médio de emissões da rede (g CO2/kWh = t CO2/MWh x 1000). As perdas da bateria
+    contam como emissões (a energia perdida teve de ser produzida). Anos seguintes com a degradação do PV."""
+    f = cfg.emission_factor_g_kwh / 1000.0
+    net1 = (eb["Importação (MWh)"] - e1["Importação (MWh)"]) + (e1["Exportação (MWh)"] - eb["Exportação (MWh)"])
+    fade = (1 - cfg.pv_degradation_yr) ** np.arange(cfg.years)
+    net = net1 * fade
+    return pd.DataFrame({"Energia da rede evitada (MWh)": net, "Emissões evitadas (t CO2)": net * f},
+                        index=[cfg.start_year + i for i in range(cfg.years)])
+
+
+def rates_table(cfg: ProjectConfig, mkt, site, tar) -> pd.DataFrame:
+    """Preços médios e custos aplicados em cada ano do projeto (já com escalada, ajustes e comissões)."""
+    def avg(a):
+        if a is None:
+            return None
+        a = np.asarray(a, dtype=float)
+        return float(np.nanmean(a)) if np.isfinite(a).any() else None
+    yrs = np.arange(cfg.years)
+    esc = (1 + cfg.price_escalation_yr) ** yrs
+    rows = []
+
+    def add(item, unit, v0, path=None):
+        if v0 is None and path is None:
+            return
+        vals = path if path is not None else v0 * esc
+        rows.append({"Item": item, "Unidade": unit, **{cfg.start_year + i: float(x) for i, x in enumerate(vals)}})
+    add("Mercado diário - preço médio", "EUR/MWh", avg(mkt.day_ahead))
+    if mkt.intraday is not None:
+        add("Mercado intradiário - preço médio", "EUR/MWh", avg(mkt.intraday))
+    if cfg.ppa_price_eur_mwh is not None:
+        add("Venda PV a preço fixo (PPA)", "EUR/MWh", None, cfg.ppa_price_eur_mwh + cfg.ppa_escalation_eur_mwh_yr * yrs)
+    adder = np.broadcast_to(np.asarray(site.import_adder_eur_mwh, dtype=float), (len(mkt.day_ahead),))
+    if np.any(adder):
+        add("Tarifas e custos na compra - média", "EUR/MWh", avg(adder))
+    if cfg.export_fee_eur_mwh:
+        add("Comissão na venda", "EUR/MWh", None, np.full(cfg.years, cfg.export_fee_eur_mwh))
+    if mkt.enable_afrr and mkt.afrr_up_cap is not None:
+        add("aFRR subir - capacidade", "EUR/MW/h", avg(mkt.afrr_up_cap))
+        add("aFRR descer - capacidade", "EUR/MW/h", avg(mkt.afrr_dn_cap))
+        add("aFRR subir - ativação", "EUR/MWh", avg(mkt.afrr_up_act_price))
+        add("aFRR descer - ativação (pago pelo agente)", "EUR/MWh", avg(mkt.afrr_dn_act_price))
+    if mkt.enable_mfrr and mkt.mfrr_up_act_price is not None:
+        add("mFRR subir - capacidade", "EUR/MW/h", 0.0)
+        add("mFRR descer - capacidade", "EUR/MW/h", 0.0)
+        add("mFRR subir - ativação", "EUR/MWh", avg(mkt.mfrr_up_act_price))
+        add("mFRR descer - ativação (pago pelo agente)", "EUR/MWh", avg(mkt.mfrr_dn_act_price))
+    if cfg.om_eur_yr:
+        om = cfg.om_eur_yr * (1 + cfg.om_escalation_yr) ** yrs
+        add("O&M fixo", "EUR/ano", None, om)
+        add("O&M fixo", "EUR/dia", None, om / 365)
+    if cfg.insurance_eur_yr:
+        ins = np.maximum(cfg.insurance_eur_yr * (1 + cfg.insurance_change_yr * yrs), 0.0)
+        add("Seguro", "EUR/ano", None, ins)
+        add("Seguro", "EUR/dia", None, ins / 365)
+    if cfg.pv_opex_eur_kwp_yr:
+        add("Opex PV", "EUR/kWp/ano", None, np.full(cfg.years, cfg.pv_opex_eur_kwp_yr))
+    if cfg.bess_opex_eur_kwh_yr:
+        add("Opex bateria", "EUR/kWh/ano", None, np.full(cfg.years, cfg.bess_opex_eur_kwh_yr))
+    return pd.DataFrame(rows)
+
+
+def compare(a: "VariantResult | None", b: "VariantResult | None", discount_rate: float) -> dict:
+    """Cashflow relativo de A face a B (None = cenário base sem ativos, cujo cashflow é zero por definição)."""
+    from .finance import irr
+    ca = a.cashflows if a is not None else None
+    cb = b.cashflows if b is not None else None
+    ref = ca if ca is not None else cb
+    ca = ca if ca is not None else ref * 0
+    cb = cb if cb is not None else ref * 0
+    cb = cb.reindex(ca.index).fillna(0.0)
+    d = ca - cb
+    disc = d / (1 + discount_rate) ** np.arange(len(d))
+    tbl = pd.DataFrame({"Cashflow A": ca, "Cashflow B": cb, "Diferença (A - B)": d,
+                        "Diferença acumulada": d.cumsum(), "Diferença descontada acumulada": disc.cumsum()})
+    return {"table": tbl, "npv": float(disc.sum()), "irr": irr(d.values)}
 
 
 def _audit(cfg, idx, mkt, results) -> dict:
@@ -413,6 +528,14 @@ def to_excel(res: ProjectResult, path_or_buffer) -> None:
                 r.annual.to_excel(xw, sheet_name=f"Anual {r.variant.name}"[:31])
         if res.audit:
             pd.Series(res.audit, name="Valor").to_frame().to_excel(xw, sheet_name="Auditoria")
+        if res.rates is not None and len(res.rates):
+            res.rates.to_excel(xw, sheet_name="Preços por ano", index=False)
+        fl = {r.variant.name: r.flows_y1 for r in res.variants if r.flows_y1}
+        if fl:
+            pd.DataFrame(fl).to_excel(xw, sheet_name="Fluxos de energia 1.º ano")
+        em = {r.variant.name: r.emissions["Emissões evitadas (t CO2)"] for r in res.variants if r.emissions is not None}
+        if em:
+            pd.DataFrame(em).to_excel(xw, sheet_name="Emissões evitadas")
         pd.DataFrame({"Base": res.baseline_energy, **{r.variant.name: r.energy_y1 for r in res.variants}}).to_excel(
             xw, sheet_name="Energia 1.º ano")
         for r in res.variants:

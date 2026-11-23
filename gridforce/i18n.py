@@ -434,3 +434,82 @@ EN.update({
     "O relatório Word inclui os cenários P90 / P50 / P10 se os correres antes para a mesma variante.":
         "The Word report includes the P90 / P50 / P10 scenarios if you run them first for the same variant.",
 })
+
+# Melhorias de 2026-11-23: licenciamento, O&M por dia, cenário base, cenários lado a lado, preços por ano, fluxos e emissões
+EN.update({
+    "Cenário (opcional)": "Scenario (optional)",
+    "Ex.: Investment Grade ou Ultra Conservative. Ao correr vários projetos, os cenários aparecem lado a lado. "
+    "Se ficar vazio, usa o texto entre parênteses no fim do nome do projeto.":
+        "E.g. Investment Grade or Ultra Conservative. When several projects are run, scenarios are shown side by side. "
+        "If left empty, the text in brackets at the end of the project name is used.",
+    "Licenciamento e ligação à rede (EUR)": "Licensing and grid connection (EUR)",
+    "Custo de investimento separado do equipamento: licenças, estudos, ramal e ligação à rede. Soma-se ao capex de cada variante.":
+        "Investment cost separate from equipment: permits, studies, grid connection works. Added to each variant's capex.",
+    "Outros custos de investimento: desenvolvimento, etc. Projetos antigos podem ter aqui o licenciamento e a "
+    "ligação à rede (o resultado é o mesmo).":
+        "Other investment costs: development, etc. Older projects may hold licensing and grid connection here "
+        "(the result is the same).",
+    "Unidade do O&M e do seguro": "O&M and insurance unit", "EUR/ano": "EUR/year", "EUR/dia": "EUR/day",
+    "O&M no 1.º ano ({u})": "Year-1 O&M ({u})", "Seguro no 1.º ano ({u})": "Year-1 insurance ({u})",
+    "Por ano: O&M {a} EUR, seguro {b} EUR.": "Per year: O&M {a} EUR, insurance {b} EUR.",
+    "Fator de emissões da rede (g CO2/kWh)": "Grid emission factor (g CO2/kWh)",
+    "Média da rede portuguesa, para calcular as emissões evitadas. Ajusta ao valor que a equipa usar.":
+        "Portuguese grid average, used for avoided emissions. Adjust to the value the team uses.",
+    "Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria nos "
+    "resultados, em \"Cenário base e valor incremental\".":
+        "To see the battery's value, add a PV-only row (BESS at 0) and compare it with the PV + battery row in "
+        "the results, under \"Baseline and incremental value\".",
+    "Cenários lado a lado": "Scenarios side by side",
+    "Para cada projeto conta a variante com maior VAL. A TIR do cenário é a dos cashflows de todos os parques somados.":
+        "For each project the variant with the highest NPV counts. The scenario IRR is that of all parks' cashflows added up.",
+    "Parque": "Park", "Parques": "Parks", "Cenário": "Scenario",
+    "Emissões evitadas 1.º ano (t CO2)": "Year-1 avoided emissions (t CO2)",
+    "Cenário base e valor incremental": "Baseline and incremental value",
+    "O cenário base é o local sem PV nem bateria. Todos os resultados acima são o ganho face a esta base. Aqui "
+    "podes comparar duas variantes entre si (ex.: PV + bateria face a só PV, para ver o valor da bateria) ou uma "
+    "variante com a base.":
+        "The baseline is the site without PV or battery. All results above are the gain over this baseline. Here you "
+        "can compare two variants (e.g. PV + battery vs PV only, to see the battery's value) or a variant with the baseline.",
+    "Base, 1.º ano (EUR)": "Baseline, year 1 (EUR)",
+    "Neste projeto a base não tem custos nem receitas (sem consumo), por isso o valor face à base é o valor total dos ativos.":
+        "In this project the baseline has no costs or revenues (no consumption), so the value vs baseline is the assets' total value.",
+    "Cenário base (sem ativos)": "Baseline (no assets)", "Variante A": "Variant A", "Comparar com (B)": "Compare with (B)",
+    "VAL de A face a B": "NPV of A vs B", "TIR incremental": "Incremental IRR", "Capex adicional de A": "Extra capex of A",
+    "Ganho 1.º ano de A face a B": "Year-1 gain of A vs B", "**Cashflow relativo (A - B)**": "**Relative cashflow (A - B)**",
+    "Diferença (A - B)": "Difference (A - B)", "Diferença descontada acumulada": "Cumulative discounted difference",
+    "Diferença acumulada": "Cumulative difference", "Cashflow A": "Cashflow A", "Cashflow B": "Cashflow B",
+    "**Value stack do 1.º ano: A - B**": "**Year-1 value stack: A - B**",
+    "Cashflow relativo por ano": "Relative cashflow by year",
+    "Preços aplicados por ano": "Rates applied by year",
+    "Preços médios de mercado e custos usados em cada ano, já com escalada, ajuste aFRR e comissões. Serve para "
+    "auditar os pressupostos.":
+        "Average market prices and costs used each year, including escalation, aFRR adjustment and fees. For auditing the assumptions.",
+    "Item": "Item", "Unidade": "Unit",
+    "Mercado diário - preço médio": "Day-ahead market - average price",
+    "Mercado intradiário - preço médio": "Intraday market - average price",
+    "Tarifas e custos na compra - média": "Import tariffs and costs - average",
+    "Comissão na venda": "Export fee",
+    "aFRR descer - ativação (pago pelo agente)": "aFRR down - activation (paid by the agent)",
+    "mFRR subir - capacidade": "mFRR up - capacity", "mFRR descer - capacidade": "mFRR down - capacity",
+    "mFRR descer - ativação (pago pelo agente)": "mFRR down - activation (paid by the agent)",
+    "EUR/kWp/ano": "EUR/kWp/year", "EUR/kWh/ano": "EUR/kWh/year",
+    "Fluxos de energia entre ativos e emissões evitadas": "Inter-asset energy flows and avoided emissions",
+    "Variante   ": "Variant", "MWh no 1.º ano": "MWh in year 1",
+    "PV → consumo": "PV → load", "PV → bateria": "PV → battery", "PV → rede": "PV → grid",
+    "Bateria → consumo": "Battery → load", "Bateria → rede": "Battery → grid", "Rede → consumo": "Grid → load",
+    "Rede → bateria": "Grid → battery", "Rede": "Grid", "Consumo": "Load",
+    "Emissões evitadas no 1.º ano": "Avoided emissions, year 1", "Emissões evitadas no projeto": "Avoided emissions, project life",
+    "Face à base, com {f} g CO2/kWh.": "Vs baseline, at {f} g CO2/kWh.",
+    "Fluxos de energia 1.º ano": "Energy flows year 1", "Emissões evitadas": "Avoided emissions",
+    "Preços por ano": "Rates by year", "Cenários": "Scenarios", "Cenários por parque": "Scenarios by park",
+    "Cashflows por cenário": "Cashflows by scenario",
+    "Energia da rede evitada (MWh)": "Grid energy avoided (MWh)", "Emissões evitadas (t CO2)": "Avoided emissions (t CO2)",
+    "Equipamento (PV e bateria)": "Equipment (PV and battery)", "Licenciamento e ligação à rede": "Licensing and grid connection",
+    "Fluxos de energia entre ativos": "Inter-asset energy flows", "Fluxo": "Flow", "dias": "days", "dia": "day",
+    "Emissões evitadas face à base: {a} t CO2 no 1.º ano e {b} t CO2 ao longo do projeto (fator da rede {f} g CO2/kWh).":
+        "Avoided emissions vs baseline: {a} t CO2 in year 1 and {b} t CO2 over the project (grid factor {f} g CO2/kWh).",
+    "Preços médios de mercado e custos aplicados, com escalada, ajustes e comissões. A tabela completa, ano a ano, "
+    "está no Excel (folha Preços por ano).":
+        "Average market prices and costs applied, with escalation, adjustments and fees. The full year-by-year table "
+        "is in the Excel file (sheet Rates by year).",
+})

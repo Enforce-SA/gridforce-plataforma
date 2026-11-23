@@ -24,7 +24,7 @@ To start a new project, click **➕ New project** (above the tabs). The project'
 
 ## 2. Fill in the tabs
 
-**1. Site and load.** Name, latitude and longitude (PV production comes from PVGIS for those coordinates). Under **Site load**, choose a C&I typical profile with the annual consumption, upload a load profile CSV (one column in kW, 15-minute or hourly), or choose "No load" for generation and storage parks. Enter the import and export limits, if any.
+**1. Site and load.** Name, scenario (optional, e.g. Investment Grade), latitude and longitude (PV production comes from PVGIS for those coordinates). Under **Site load**, choose a C&I typical profile with the annual consumption, upload a load profile CSV (one column in kW, 15-minute or hourly), or choose "No load" for generation and storage parks. Enter the import and export limits, if any.
 
 **2. PV and battery.** Tilt, azimuth (180 = south), losses, DC/AC ratio, degradation and unit costs for PV. For the battery: efficiency, SOC window, capacity fade, wear cost, cycle limit per day and costs. The "More battery parameters" and "Degradation, end of life and replacements" sections hold advanced options (cycle-based degradation, capacity augmentation, PCS replacement).
 
@@ -32,10 +32,10 @@ To start a new project, click **➕ New project** (above the tabs). The project'
 
 - **Markets:** OMIE price period (the 12 months up to the chosen date), day-ahead arbitrage, aFRR, intraday and mFRR. For ancillary services, the activation rate and "accepted bids" have a large impact. GridCog uses 50% accepted bids.
 - **Tariffs:** voltage level (ERSE network tariffs), other purchase costs, and PV sales to the market or at a fixed price (PPA).
-- **Finance:** start year, duration, discount rate, O&M costs, insurance, price escalation and residual value. Under **Financing and taxes** you can add debt and corporate tax. With these at zero, the case is pre-tax and all-equity, as in GridCog.
+- **Finance:** start year, duration, discount rate, licensing and grid connection (separate from equipment capex), O&M and insurance (in EUR/year or EUR/day), grid emission factor, price escalation and residual value. Under **Financing and taxes** you can add debt and corporate tax. With these at zero, the case is pre-tax and all-equity, as in GridCog.
 - **Fast mode** simulates the first and last year and interpolates the rest. It is enough to compare variants. Turn it off for a more precise final run.
 
-**4. Variants.** One row per configuration to compare: PV kWp, battery kWh and kW. If you know a variant's total capex, enter it under "Total capex (EUR)". It then replaces the calculation from unit costs.
+**4. Variants.** One row per configuration to compare: PV kWp, battery kWh and kW. If you know a variant's total capex, enter it under "Total capex (EUR)". It then replaces the calculation from unit costs. To see the battery's value, add a PV-only row.
 
 ## 3. Run and read the results
 
@@ -47,6 +47,10 @@ Click **Run simulation**. A run usually takes between 15 seconds and 2 minutes, 
 - **Dispatch on one day:** choose a variant and a day to see what the PV, battery and grid do, with the OMIE price.
 - **Annual accounts:** revenue, opex, EBITDA, capex, cashflow and, with financing, tax, interest, DSCR and equity cashflow.
 - **Risks and sensitivities:** the tornado chart shows how much the NPV moves when each factor goes up or down. **Run price scenarios** re-simulates with prices from earlier years and gives the P90, P50 and P10 NPV. P90 is the most prudent value.
+- **Year-1 energy** and **Baseline and incremental value:** compare a variant with the baseline (no assets) or with another variant (e.g. PV + battery vs PV only), with incremental NPV and IRR and the relative cashflow year by year.
+- **Rates applied by year:** average market prices (day-ahead, intraday, aFRR, mFRR), PPA, O&M and insurance used each year.
+- **Inter-asset energy flows and avoided emissions:** PV to grid, PV to battery, battery to grid, etc., and the tonnes of CO2 avoided.
+- When several projects are run at once, **Scenarios side by side** shows each scenario's totals (e.g. Investment Grade and Ultra Conservative) and each park in each scenario.
 - **Run audit:** engine version, data used and automatic checks of the energy balance and limits.
 
 ## 4. Export

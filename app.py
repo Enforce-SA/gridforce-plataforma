@@ -64,6 +64,18 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+# Uma cor diferente para cada fonte de valor (famílias: mercado verde, PPA amarelo, aFRR azuis, mFRR roxos, tarifas cinzentos)
+STREAM_COLORS = {
+    "Mercado diário - venda (export)": "#5C8831", "Mercado diário - compra (import)": "#2B4D22",
+    "Mercado intradiário - venda (export)": "#8FD14F", "Mercado intradiário - compra (import)": "#3E6B2A",
+    "Venda PV a preço fixo (PPA)": "#F2C14E",
+    "aFRR subir - capacidade": "#2E86AB", "aFRR descer - capacidade": "#7FC8F8",
+    "aFRR subir - ativação": "#1B4F72", "aFRR descer - ativação": "#A9D6E5",
+    "mFRR subir - ativação": "#8E6CCF", "mFRR descer - ativação": "#D4B8F0",
+    "Tarifas de acesso - energia e potência em ponta": "#9AA79A", "Tarifas de acesso - potência contratada": "#E07A5F",
+}
+
+
 def _style(fig):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", colorway=SERIES,
                       font=dict(color=BRAND["text"]))
@@ -784,9 +796,14 @@ with tab_res:
                     delta = v - res.baseline_streams.get(k, 0.0)
                     if abs(delta) > 1:
                         rows.append({T("Variante"): r.variant.name, T("Fonte de valor"): T(k), "EUR": delta})
-            fig = px.bar(pd.DataFrame(rows), x=T("Variante"), y="EUR", color=T("Fonte de valor"), barmode="relative")
+            fig = px.bar(pd.DataFrame(rows), x=T("Variante"), y="EUR", color=T("Fonte de valor"), barmode="relative",
+                         color_discrete_map={T(k): c for k, c in STREAM_COLORS.items()})
             fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"), height=520, margin=dict(t=110))
             st.plotly_chart(_style(fig), width="stretch")
+            if res.config.ppa_price_eur_mwh is not None:
+                st.caption(T("Com PPA, todo o PV injetado diretamente na rede é vendido ao preço fixo. \"Mercado diário - "
+                           "venda\" é a energia que a bateria descarrega e vende no mercado (carregada com PV ou com "
+                           "energia da rede), nas horas de preço mais alto."))
         with c2:
             st.subheader(T("Cashflow descontado acumulado"))
             fig = go.Figure()

@@ -580,3 +580,9 @@ EN.update({
     "Falta o capex do equipamento de: {v}.": "Equipment capex missing for: {v}.",
     "Capex do equipamento (separador 4)": "Equipment capex (tab 4)",
 })
+EN.update({
+    "Com PPA, todo o PV injetado diretamente na rede é vendido ao preço fixo. \"Mercado diário - venda\" é a energia que "
+    "a bateria descarrega e vende no mercado (carregada com PV ou com energia da rede), nas horas de preço mais alto.":
+        "With a PPA, all PV fed directly into the grid is sold at the fixed price. \"Day-ahead - sale\" is the energy the "
+        "battery discharges and sells on the market (charged from PV or from the grid), in the highest-price hours.",
+})

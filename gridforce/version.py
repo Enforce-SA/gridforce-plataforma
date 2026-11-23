@@ -1,3 +1,3 @@
 """Versão da GridForce. Atualizar aqui e no CHANGELOG.md em cada versão publicada em Produção."""
-VERSION = "0.9.1"
-DATE = "2026-11-20"
+VERSION = "0.10.0"
+DATE = "2026-11-23"

@@ -3,6 +3,18 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.10.0 (2026-11-23)
+- Licenciamento e ligação à rede como custo de investimento separado do equipamento.
+- O&M e seguro em EUR/ano ou EUR/dia.
+- Capex do equipamento: escolha explícita entre "calculado por EUR/kWp e EUR/kWh" e "valor fixo por variante"; quadro "Capex total usado na simulação" no separador 4.
+- Separador 2 mostra a potência de pico PV (kWp) e a potência AC do inversor.
+- Cenário base e valor incremental: comparar uma variante com a base ou com outra variante (VAL e TIR incrementais, cashflow relativo).
+- Campo Cenário e "Cenários lado a lado" ao correr vários projetos (ex.: Investment Grade e Ultra Conservative).
+- Tabela de preços aplicados por ano (mercados, PPA, aFRR/mFRR, O&M, seguro), também no Excel e no relatório.
+- Fluxos de energia entre ativos e emissões evitadas (fator da rede 470 g CO2/kWh por omissão).
+- "Gravar como..." para gravar uma nova versão ou um projeto novo sem substituir o original.
+- Value stack com uma cor por fonte de valor e nota sobre a venda em mercado com PPA.
+
 ## 0.9.1 (2026-11-20)
 - Botão "Novo projeto": limpa os campos próprios do projeto nos separadores 1 a 4 e mantém valores típicos nos restantes; avisa o que falta preencher antes de correr.
 - Ao abrir outro projeto, todos os campos passam a mostrar os valores desse projeto, e mudar de língua já não apaga o que se escreveu.

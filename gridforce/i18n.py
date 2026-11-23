@@ -526,3 +526,22 @@ EN.update({
     "Gravar com este nome": "Save with this name",
     "Gravado como {fn}. Os separadores mostram agora este projeto.": "Saved as {fn}. The tabs now show this project.",
 })
+
+# Capex das variantes e potência de pico (2026-11-23)
+EN.update({
+    "Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. O capex do equipamento é opcional: se o "
+    "preencheres, substitui o cálculo por EUR/kWp e EUR/kWh. O licenciamento, a ligação à rede e o capex adicional "
+    "(separador 3) somam-se a este valor.":
+        "Each row is a variant to compare. Add or delete rows freely. Equipment capex is optional: if you fill it in, it "
+        "replaces the EUR/kWp and EUR/kWh calculation. Licensing, grid connection and additional capex (tab 3) are added to it.",
+    "Capex do equipamento (EUR, opcional)": "Equipment capex (EUR, optional)",
+    "PV e bateria. Se ficar vazio, é calculado com os EUR/kWp e EUR/kWh do separador 2.":
+        "PV and battery. If empty, it is calculated with the EUR/kWp and EUR/kWh of tab 2.",
+    "**Capex total usado na simulação**": "**Total capex used in the simulation**",
+    "Capex do equipamento (EUR)": "Equipment capex (EUR)", "Origem": "Source",
+    "indicado na tabela": "entered in the table", "calculado por EUR/kWp e EUR/kWh": "calculated from EUR/kWp and EUR/kWh",
+    "Capex total do projeto (EUR)": "Total project capex (EUR)",
+    "Potência de pico PV (kWp)": "PV peak power (kWp)", "Potência AC do inversor (kW)": "Inverter AC power (kW)",
+    "A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC.":
+        "Peak power is set per variant, in tab 4. AC power = kWp / DC/AC ratio.",
+})

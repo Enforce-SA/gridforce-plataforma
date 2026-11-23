@@ -330,6 +330,7 @@ with tab_tech:
         az = st.number_input(T("Azimute (°, 180 = sul)"), value=P("Azimute (°, 180 = sul)", 180.0))
         loss = st.number_input(T("Perdas do sistema (%)"), value=P("Perdas do sistema (%)", 14.0))
         dcac = st.number_input(T("Rácio DC/AC do inversor"), value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
+        pv_peak_slot = st.container()   # preenchido depois do separador 4 (a potência de pico vem das variantes)
         pv_deg = st.number_input(T("Degradação anual (%)"), value=P("Degradação anual (%)", 0.5)) / 100
         pv_capex = st.number_input(T("Capex PV (EUR/kWp)"), value=P("Capex PV (EUR/kWp)", 900.0))
         pv_opex = st.number_input(T("Opex PV (EUR/kWp/ano)"), value=P("Opex PV (EUR/kWp/ano)", 0.0))
@@ -471,12 +472,55 @@ with tab_mkt:
 
 with tab_var:
     st.write(T("Cada linha é uma variante a comparar. Adiciona ou apaga linhas à vontade. "
-             "Se preencheres o capex total, substitui o cálculo por EUR/kWp e EUR/kWh."))
+             "O capex do equipamento é opcional: se o preencheres, substitui o cálculo por EUR/kWp e EUR/kWh. "
+             "O licenciamento, a ligação à rede e o capex adicional (separador 3) somam-se a este valor."))
     st.caption(T("Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria "
                "nos resultados, em \"Cenário base e valor incremental\"."))
     variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
-                                 column_config={c: st.column_config.Column(T(c)) for c in
-                                                ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)")})
+                                 column_config={**{c: st.column_config.Column(T(c)) for c in
+                                                   ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)")},
+                                                "Capex total (EUR)": st.column_config.NumberColumn(
+                                                    T("Capex do equipamento (EUR, opcional)"), format="%.0f",
+                                                    help=T("PV e bateria. Se ficar vazio, é calculado com os EUR/kWp e EUR/kWh do separador 2."))})
+    _vv = variants_df.dropna(subset=["Variante"])
+    if not _vv.empty:
+        def _n(x):
+            try:
+                return 0.0 if x is None or pd.isna(x) else float(x)
+            except (TypeError, ValueError):
+                return 0.0
+        _rows = []
+        for _, _r in _vv.iterrows():
+            _eq_in = _r.get("Capex total (EUR)")
+            _eq = _n(_eq_in) if _eq_in is not None and not pd.isna(_eq_in) else \
+                _n(_r.get("PV (kWp)")) * (pv_capex or 0.0) + _n(_r.get("BESS (kWh)")) * (b_capex or 0.0)
+            _rows.append({"Variante": _r["Variante"],
+                          "Capex do equipamento (EUR)": _eq,
+                          "Origem": "indicado na tabela" if _eq_in is not None and not pd.isna(_eq_in) else "calculado por EUR/kWp e EUR/kWh",
+                          "Licenciamento e ligação à rede (EUR)": lic_capex or 0.0,
+                          "Capex adicional (EUR)": other_capex or 0.0,
+                          "Capex total do projeto (EUR)": _eq + (lic_capex or 0.0) + (other_capex or 0.0)})
+        st.markdown(T("**Capex total usado na simulação**"))
+        _ct = pd.DataFrame(_rows)
+        _ct["Origem"] = _ct["Origem"].map(T)
+        st.dataframe(TD(_ct).style.format({T(c): "{:,.0f}" for c in _ct.columns if c.endswith("(EUR)")}),
+                     width="stretch", hide_index=True)
+with pv_peak_slot:
+    _vv = variants_df.dropna(subset=["Variante"])
+    for _i, (_, _r) in enumerate(_vv.iterrows()):
+        try:
+            _kwp = float(_r.get("PV (kWp)") or 0.0)
+        except (TypeError, ValueError):
+            _kwp = 0.0
+        if pd.isna(_kwp):
+            _kwp = 0.0
+        _ca, _cb = st.columns(2)
+        _lbl = f" · {_r['Variante']}" if len(_vv) > 1 else ""
+        _ca.number_input(T("Potência de pico PV (kWp)") + _lbl, value=_kwp, disabled=True, format="%.1f",
+                         key=f"{PRESET_ID}|kwp_{_i}_{_r['Variante']}_{_kwp}")
+        _cb.number_input(T("Potência AC do inversor (kW)") + _lbl, value=_kwp / dcac if dcac else 0.0, disabled=True,
+                         format="%.1f", key=f"{PRESET_ID}|kwac_{_i}_{_r['Variante']}_{_kwp}_{dcac}")
+    st.caption(T("A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC."))
 for _w in _WIDGETS:
     setattr(st, _w, _ORIG[_w])
 

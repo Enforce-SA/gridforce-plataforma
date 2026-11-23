@@ -505,6 +505,13 @@ with tab_var:
         _ct["Origem"] = _ct["Origem"].map(T)
         st.dataframe(TD(_ct).style.format({T(c): "{:,.0f}" for c in _ct.columns if c.endswith("(EUR)")}),
                      width="stretch", hide_index=True)
+        _ign = [str(_r["Variante"]) for _, _r in _vv.iterrows()
+                if _r.get("Capex total (EUR)") is not None and not pd.isna(_r.get("Capex total (EUR)"))
+                and ((pv_capex or 0) * _n(_r.get("PV (kWp)")) > 0 or (b_capex or 0) * _n(_r.get("BESS (kWh)")) > 0)]
+        if _ign:
+            st.warning(T("Atenção: {v} tem o capex do equipamento preenchido na tabela, por isso os valores de Capex PV "
+                         "(EUR/kWp) e Capex bateria (EUR/kWh) do separador 2 não estão a ser usados. Para usar os "
+                         "EUR/kWp e EUR/kWh, apaga o valor da coluna \"Capex do equipamento\".").format(v=", ".join(_ign)))
 with pv_peak_slot:
     _vv = variants_df.dropna(subset=["Variante"])
     for _i, (_, _r) in enumerate(_vv.iterrows()):
@@ -521,6 +528,10 @@ with pv_peak_slot:
         _cb.number_input(T("Potência AC do inversor (kW)") + _lbl, value=_kwp / dcac if dcac else 0.0, disabled=True,
                          format="%.1f", key=f"{PRESET_ID}|kwac_{_i}_{_r['Variante']}_{_kwp}_{dcac}")
     st.caption(T("A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC."))
+    if any(_r.get("Capex total (EUR)") is not None and not pd.isna(_r.get("Capex total (EUR)")) for _, _r in _vv.iterrows()) \
+            and ((pv_capex or 0) > 0 or (b_capex or 0) > 0):
+        st.warning(T("Há variantes com o capex do equipamento indicado no separador 4: para essas, os EUR/kWp e EUR/kWh "
+                     "daqui não contam."))
 for _w in _WIDGETS:
     setattr(st, _w, _ORIG[_w])
 

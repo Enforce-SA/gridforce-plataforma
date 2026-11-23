@@ -545,3 +545,12 @@ EN.update({
     "A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC.":
         "Peak power is set per variant, in tab 4. AC power = kWp / DC/AC ratio.",
 })
+EN.update({
+    "Atenção: {v} tem o capex do equipamento preenchido na tabela, por isso os valores de Capex PV (EUR/kWp) e Capex "
+    "bateria (EUR/kWh) do separador 2 não estão a ser usados. Para usar os EUR/kWp e EUR/kWh, apaga o valor da coluna "
+    "\"Capex do equipamento\".":
+        "Note: {v} has equipment capex entered in the table, so the PV capex (EUR/kWp) and battery capex (EUR/kWh) of "
+        "tab 2 are not used. To use EUR/kWp and EUR/kWh, clear the \"Equipment capex\" cell.",
+    "Há variantes com o capex do equipamento indicado no separador 4: para essas, os EUR/kWp e EUR/kWh daqui não contam.":
+        "Some variants have equipment capex entered in tab 4: for those, the EUR/kWp and EUR/kWh here are not used.",
+})

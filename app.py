@@ -874,7 +874,8 @@ with tab_res:
             rt["Unidade"] = rt["Unidade"].map(T)
             ycols = [c for c in rt.columns if not isinstance(c, str)]
             rt.columns = [str(c) for c in rt.columns]
-            st.dataframe(TD(rt).style.format({str(c): "{:,.2f}" for c in ycols}), width="stretch", hide_index=True,
+            _rf = lambda x: "" if x is None or pd.isna(x) else (f"{x:,.0f}" if abs(x) >= 1000 else f"{x:,.2f}")
+            st.dataframe(TD(rt).style.format({str(c): _rf for c in ycols}), width="stretch", hide_index=True,
                          height=36 * (len(rt) + 1) + 4)
 
         # ---------------------------------------------- fluxos de energia e emissões

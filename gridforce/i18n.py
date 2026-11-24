@@ -599,4 +599,13 @@ EN.update({
         "Fixed or tracking. The production profile comes from PVGIS for the chosen type. "
         "For trackers the azimuth is ignored; for the horizontal-axis and dual-axis trackers the tilt is ignored too; "
         "for the inclined-axis tracker the tilt is the axis tilt. PVGIS does not model backtracking or row-to-row shading.",
+    "BESS (h)": "BESS (h)", "Duração da bateria em horas à potência nominal.": "Battery duration in hours at rated power.",
+    "Capacidade de armazenamento = potência (kW) x duração (h). Calculada.":
+        "Storage capacity = power (kW) x duration (h). Calculated.",
+    "Potência da bateria (kW)": "Battery power (kW)", "Duração (h)": "Duration (h)",
+    "Capacidade de armazenamento": "Storage capacity",
+    "Capacidade = potência x duração. O tamanho da bateria é de cada variante: também se pode mudar "
+    "na tabela do separador 4 (põe 0 kW para uma variante só com PV).":
+        "Capacity = power x duration. The battery size belongs to each variant: it can also be changed in the "
+        "table in tab 4 (set 0 kW for a PV-only variant).",
 })

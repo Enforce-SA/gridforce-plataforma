@@ -257,17 +257,75 @@ def P(key, default):
     return v
 
 
+VCOLS = ["Variante", "PV (kWp)", "BESS (kW)", "BESS (h)", "BESS (kWh)", "Capex total (EUR)"]
+VNUM = ["PV (kWp)", "BESS (kW)", "BESS (h)", "BESS (kWh)", "Capex total (EUR)"]
+
+
 def _variants_default():
     if NEW:
-        df = pd.DataFrame(columns=["Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)"])
+        df = pd.DataFrame(columns=VCOLS)
     elif "Variantes" in PRESET:
         df = pd.DataFrame(PRESET["Variantes"])
     else:
         df = DEFAULT_VARIANTS.copy()
-    for c in ("PV (kWp)", "BESS (kWh)", "BESS (kW)", "Capex total (EUR)"):
+    for c in VCOLS:
         if c not in df:
             df[c] = None
-    return df.astype({"PV (kWp)": float, "BESS (kWh)": float, "BESS (kW)": float, "Capex total (EUR)": float})
+    df = df.astype({c: float for c in VNUM})
+    # Projetos antigos não têm a duração: deriva-se de kWh / kW (a capacidade gravada fica igual, mesmos resultados)
+    _h = df["BESS (kWh)"] / df["BESS (kW)"].where(df["BESS (kW)"] > 0)
+    df["BESS (h)"] = df["BESS (h)"].fillna(_h).fillna(0.0)
+    return df.reset_index(drop=True)
+
+
+# A tabela de variantes é guardada aqui (uma por projeto aberto). A tabela do separador 4 e os campos de potência e
+# duração da bateria do separador 2 escrevem todos nela; a capacidade (kWh) é sempre potência x horas.
+_VK, _VVER = f"vbase_{PRESET_ID}", f"vver_{PRESET_ID}"
+if _VK not in st.session_state:
+    st.session_state[_VK], st.session_state[_VVER] = _variants_default(), 0
+
+
+def _vnum(x):
+    try:
+        return 0.0 if x is None or pd.isna(x) else float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _vbump(df):
+    df = df.reset_index(drop=True)
+    st.session_state[_VK] = df
+    st.session_state[_VVER] = st.session_state[_VVER] + 1
+
+
+def _on_variants_edit(key):
+    ed = st.session_state.get(key) or {}
+    df = st.session_state[_VK].copy()
+    for i, ch in (ed.get("edited_rows") or {}).items():
+        for c, v in ch.items():
+            if c in df.columns:
+                df.at[int(i), c] = v
+        if "BESS (kW)" in ch or "BESS (h)" in ch:
+            df.at[int(i), "BESS (kWh)"] = _vnum(df.at[int(i), "BESS (kW)"]) * _vnum(df.at[int(i), "BESS (h)"])
+    dels = sorted(int(i) for i in (ed.get("deleted_rows") or []))
+    if dels:
+        df = df.drop(index=dels)
+    for r in ed.get("added_rows") or []:
+        r = {c: r.get(c) for c in VCOLS}
+        if r["Variante"] is None or str(r["Variante"]).strip() == "":
+            r["Variante"] = T("Variante") + f" {len(df) + 1}"
+        for c in ("PV (kWp)", "BESS (kW)", "BESS (h)"):
+            r[c] = _vnum(r[c])
+        r["BESS (kWh)"] = _vnum(r.get("BESS (kW)")) * _vnum(r.get("BESS (h)"))
+        df = pd.concat([df, pd.DataFrame([r]).astype({c: float for c in VNUM})], ignore_index=True)
+    _vbump(df)
+
+
+def _on_bess_field(i, col, key):
+    df = st.session_state[_VK].copy()
+    df.at[i, col] = st.session_state[key]
+    df.at[i, "BESS (kWh)"] = _vnum(df.at[i, "BESS (kW)"]) * _vnum(df.at[i, "BESS (h)"])
+    _vbump(df)
 
 
 st.button("➕ " + T("Novo projeto"), on_click=_new_project,
@@ -362,6 +420,7 @@ with tab_tech:
         pv_opex = st.number_input(T("Opex PV (EUR/kWp/ano)"), value=P("Opex PV (EUR/kWp/ano)", 0.0))
     with c2:
         st.subheader(T("Bateria"))
+        bess_size_slot = st.container()   # preenchido depois do separador 4 (o tamanho da bateria é por variante)
         rte = st.number_input(T("Eficiência round-trip (%)"), value=P("Eficiência round-trip (%)", 88.0)) / 100
         soc_min, soc_max = st.slider(T("Janela de SOC (%)"), 0, 100, tuple(P("Janela de SOC (%)", (5, 95))))
         b_deg = st.number_input(T("Perda de capacidade anual (%)"), value=P("Perda de capacidade anual (%)", 2.0)) / 100
@@ -507,20 +566,26 @@ with tab_var:
                   "Para escrever um valor fixo por variante, muda a opção no separador 2."))
     st.caption(T("Para ver o valor da bateria, junta uma linha só com PV (BESS a 0) e compara-a com a de PV + bateria "
                "nos resultados, em \"Cenário base e valor incremental\"."))
-    variants_df = st.data_editor(_variants_default(), num_rows="dynamic", width="stretch", key=f"variants_{PRESET_ID}",
-                                 column_order=["Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)"] + (["Capex total (EUR)"] if FIXED else []),
-                                 column_config={**{c: st.column_config.Column(T(c)) for c in
-                                                   ("Variante", "PV (kWp)", "BESS (kWh)", "BESS (kW)")},
-                                                "Capex total (EUR)": st.column_config.NumberColumn(
-                                                    T("Capex do equipamento (EUR)"), format="%.0f",
-                                                    help=T("PV e bateria, por variante."))})
+    _vcols = ["Variante", "PV (kWp)", "BESS (kW)", "BESS (h)", "BESS (kWh)"]
+    _ek = f"variants_{PRESET_ID}_{st.session_state[_VVER]}"
+    st.data_editor(st.session_state[_VK], num_rows="dynamic", width="stretch",
+                   key=_ek, on_change=_on_variants_edit, args=(_ek,),
+                   column_order=_vcols + (["Capex total (EUR)"] if FIXED else []),
+                   disabled=["BESS (kWh)"],
+                   column_config={**{c: st.column_config.Column(T(c)) for c in ("Variante", "PV (kWp)", "BESS (kW)")},
+                                  "BESS (h)": st.column_config.NumberColumn(
+                                      T("BESS (h)"), min_value=0.0, format="%.2f",
+                                      help=T("Duração da bateria em horas à potência nominal.")),
+                                  "BESS (kWh)": st.column_config.NumberColumn(
+                                      T("BESS (kWh)"), format="%.0f",
+                                      help=T("Capacidade de armazenamento = potência (kW) x duração (h). Calculada.")),
+                                  "Capex total (EUR)": st.column_config.NumberColumn(
+                                      T("Capex do equipamento (EUR)"), format="%.0f",
+                                      help=T("PV e bateria, por variante."))})
+    variants_df = st.session_state[_VK]
     _vv = variants_df.dropna(subset=["Variante"])
     if not _vv.empty:
-        def _n(x):
-            try:
-                return 0.0 if x is None or pd.isna(x) else float(x)
-            except (TypeError, ValueError):
-                return 0.0
+        _n = _vnum
         _rows = []
         for _, _r in _vv.iterrows():
             _eq_in = _r.get("Capex total (EUR)") if FIXED else None
@@ -557,6 +622,25 @@ with pv_peak_slot:
         _cb.number_input(T("Potência AC do inversor (kW)") + _lbl, value=_kwp / dcac if dcac else 0.0, disabled=True,
                          format="%.1f", key=f"{PRESET_ID}|kwac_{_i}_{_r['Variante']}_{_kwp}_{dcac}")
     st.caption(T("A potência de pico é definida por variante, no separador 4. Potência AC = kWp / rácio DC/AC."))
+with bess_size_slot:
+    _vv = variants_df.dropna(subset=["Variante"])
+    _ver = st.session_state[_VVER]
+    for _i, _r in _vv.iterrows():
+        _kw, _h, _kwh = _vnum(_r.get("BESS (kW)")), _vnum(_r.get("BESS (h)")), _vnum(_r.get("BESS (kWh)"))
+        _lbl = ""
+        if len(_vv) > 1:
+            st.markdown(f"**{_r['Variante']}**")
+        _ca, _cb, _cc = st.columns(3)
+        _k1, _k2 = f"{PRESET_ID}|bkw_{_ver}_{_i}", f"{PRESET_ID}|bh_{_ver}_{_i}"
+        _ca.number_input(T("Potência da bateria (kW)") + _lbl, value=_kw, min_value=0.0, step=100.0, format="%.0f",
+                         key=_k1, on_change=_on_bess_field, args=(_i, "BESS (kW)", _k1))
+        _cb.number_input(T("Duração (h)") + _lbl, value=_h, min_value=0.0, step=0.5, format="%.2f",
+                         key=_k2, on_change=_on_bess_field, args=(_i, "BESS (h)", _k2))
+        _cap = f"{_kwh:,.0f} kWh = {_kwh / 1000:,.2f} MWh"
+        _cc.text_input(T("Capacidade de armazenamento") + _lbl, value=_cap, disabled=True,
+                       key=f"{PRESET_ID}|bkwh_{_ver}_{_i}_{_kwh}")
+    st.caption(T("Capacidade = potência x duração. O tamanho da bateria é de cada variante: também se pode mudar "
+                 "na tabela do separador 4 (põe 0 kW para uma variante só com PV)."))
 for _w in _WIDGETS:
     setattr(st, _w, _ORIG[_w])
 

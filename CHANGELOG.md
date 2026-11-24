@@ -3,6 +3,9 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.12.1 (2026-11-24)
+- Menu de navegação destacado: os 5 passos (Local e consumo, PV e bateria, Mercados, Variantes, Resultados) passam a estar numa coluna à esquerda, sempre visível ao descer a página, com o passo atual a verde. Os valores preenchidos mantêm-se ao mudar de passo. Em ecrãs estreitos (telemóvel) o menu fica em cima, em botões.
+
 ## 0.12.0 (2026-11-24)
 - Bateria definida por potência (kW) e duração (h): a capacidade de armazenamento (kWh/MWh) passa a ser calculada como potência x horas. Os campos estão no separador 2 (lado da bateria) e na tabela de variantes do separador 4, sempre sincronizados. Projetos já gravados mantêm a mesma capacidade e os mesmos resultados (a duração é deduzida de kWh / kW).
 

@@ -586,3 +586,17 @@ EN.update({
         "With a PPA, all PV fed directly into the grid is sold at the fixed price. \"Day-ahead - sale\" is the energy the "
         "battery discharges and sells on the market (charged from PV or from the grid), in the highest-price hours.",
 })
+
+EN.update({
+    "Montagem PV": "PV mounting", "Fixo": "Fixed",
+    "Seguidor de 1 eixo horizontal (eixo N-S, roda E-O)": "Single-axis tracker, horizontal (N-S axis, tracks E-W)",
+    "Seguidor de 1 eixo inclinado (eixo N-S)": "Single-axis tracker, inclined (N-S axis)",
+    "Seguidor de 2 eixos": "Dual-axis tracker",
+    "Fixo ou com seguidor. O perfil de produção vem do PVGIS para o tipo escolhido. "
+    "Nos seguidores o azimute não conta; no de eixo horizontal e no de 2 eixos a "
+    "inclinação também não; no de eixo inclinado a inclinação é a do eixo. "
+    "O PVGIS não considera backtracking nem sombreamento entre filas.":
+        "Fixed or tracking. The production profile comes from PVGIS for the chosen type. "
+        "For trackers the azimuth is ignored; for the horizontal-axis and dual-axis trackers the tilt is ignored too; "
+        "for the inclined-axis tracker the tilt is the axis tilt. PVGIS does not model backtracking or row-to-row shading.",
+})

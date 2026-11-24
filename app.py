@@ -32,6 +32,7 @@ for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.p
     importlib.reload(_m)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
+from gridforce.data.pvgis import MOUNTING_DEFAULT, MOUNTINGS
 from gridforce.presets import CAPEX_MODES, capex_mode, config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
 from gridforce.project import compare as compare_variants
 from gridforce import sensitivity as sens
@@ -343,8 +344,17 @@ with tab_tech:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader(T("PV"))
-        tilt = st.number_input(T("Inclinação (°)"), value=P("Inclinação (°)", 10.0))
-        az = st.number_input(T("Azimute (°, 180 = sul)"), value=P("Azimute (°, 180 = sul)", 180.0))
+        _mnt0 = P("Montagem PV", MOUNTING_DEFAULT)
+        mounting = st.selectbox(T("Montagem PV"), list(MOUNTINGS), format_func=T,
+                                index=list(MOUNTINGS).index(_mnt0) if _mnt0 in MOUNTINGS else 0,
+                                help=T("Fixo ou com seguidor. O perfil de produção vem do PVGIS para o tipo escolhido. "
+                                       "Nos seguidores o azimute não conta; no de eixo horizontal e no de 2 eixos a "
+                                       "inclinação também não; no de eixo inclinado a inclinação é a do eixo. "
+                                       "O PVGIS não considera backtracking nem sombreamento entre filas."))
+        _trk = mounting != MOUNTING_DEFAULT
+        tilt = st.number_input(T("Inclinação (°)"), value=P("Inclinação (°)", 10.0),
+                               disabled=MOUNTINGS[mounting] in (1, 2))
+        az = st.number_input(T("Azimute (°, 180 = sul)"), value=P("Azimute (°, 180 = sul)", 180.0), disabled=_trk)
         loss = st.number_input(T("Perdas do sistema (%)"), value=P("Perdas do sistema (%)", 14.0))
         dcac = st.number_input(T("Rácio DC/AC do inversor"), value=P("Rácio DC/AC do inversor", 1.2), min_value=0.5)
         pv_peak_slot = st.container()   # preenchido depois do separador 4 (a potência de pico vem das variantes)
@@ -559,7 +569,7 @@ def _current_project() -> dict:
         "Nome do projeto": name, "Latitude": lat, "Longitude": lon, "Consumo do local": load_mode,
         "Consumo anual (MWh)": annual,
         "Limite de importação (kW, 0 = sem limite)": imp_lim, "Limite de injeção na rede (kW, 0 = sem limite)": exp_lim,
-        "Inclinação (°)": tilt, "Azimute (°, 180 = sul)": az, "Perdas do sistema (%)": loss,
+        "Montagem PV": mounting, "Inclinação (°)": tilt, "Azimute (°, 180 = sul)": az, "Perdas do sistema (%)": loss,
         "Modo do capex": capex_m, "Rácio DC/AC do inversor": dcac, "Degradação anual (%)": pv_deg * 100, "Capex PV (EUR/kWp)": pv_capex,
         "Opex PV (EUR/kWp/ano)": pv_opex, "Eficiência round-trip (%)": rte * 100, "Janela de SOC (%)": [soc_min, soc_max],
         "Perda de capacidade anual (%)": b_deg * 100, "Custo de desgaste (EUR/MWh descarregado)": wear,
@@ -683,7 +693,7 @@ if run:
         ppa_price_eur_mwh=ppa if sale == "Preço fixo (PPA)" else None, ppa_escalation_eur_mwh_yr=ppa_esc,
         other_capex_eur=other_capex, licensing_capex_eur=lic_capex, emission_factor_g_kwh=emf, om_eur_yr=om, om_escalation_yr=om_esc, insurance_eur_yr=ins,
         insurance_change_yr=ins_chg,
-        pv_tilt=tilt, pv_azimuth=az, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
+        pv_tilt=tilt, pv_azimuth=az, pv_mounting=mounting, pv_loss_pct=loss, pv_dc_ac_ratio=dcac, pv_degradation_yr=pv_deg,
         pv_capex_eur_kwp=pv_capex if pv_capex is not None else 0.0, pv_opex_eur_kwp_yr=pv_opex,
         bess_rte=rte, bess_soc_min=soc_min / 100, bess_soc_max=soc_max / 100, bess_degradation_yr=b_deg,
         bess_wear_eur_mwh=wear, bess_max_cycles_day=max_cyc or None, bess_capex_eur_kwh=b_capex if b_capex is not None else 0.0, bess_opex_eur_kwh_yr=b_opex,

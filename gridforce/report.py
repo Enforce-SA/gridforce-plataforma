@@ -393,7 +393,10 @@ def to_docx(res, vname: str, buf, price_scen: dict | None = None, sens_pct: floa
                 if cfg.ppa_price_eur_mwh is not None else T("Mercado diário OMIE"))
         kv_table(doc, [(T("Potência de pico (kWp)"), num(v.pv_kwp)),
                        (T("Potência do inversor (kW AC)"), num(v.pv_kwp / cfg.pv_dc_ac_ratio)),
-                       (T("Inclinação / azimute"), f"{num(cfg.pv_tilt)}° / {num(cfg.pv_azimuth)}°"),
+                       (T("Montagem PV"), T(cfg.pv_mounting)),
+                       (T("Inclinação / azimute"), f"{num(cfg.pv_tilt)}° / {num(cfg.pv_azimuth)}°"
+                        if cfg.pv_mounting == "Fixo" else
+                        (f"{num(cfg.pv_tilt)}° / -" if "inclinado" in cfg.pv_mounting else "-")),
                        (T("Perdas do sistema"), f"{num(cfg.pv_loss_pct, 1)}%"),
                        (T("Degradação anual"), pct(cfg.pv_degradation_yr, 2)),
                        (T("Venda do excedente"), sale),

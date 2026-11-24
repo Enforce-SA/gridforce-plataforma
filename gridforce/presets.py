@@ -9,6 +9,7 @@ import datetime as dt
 
 import pandas as pd
 
+from .data.pvgis import MOUNTING_DEFAULT, MOUNTINGS
 from .project import ProjectConfig, Variant
 
 
@@ -76,6 +77,7 @@ def config_from_dict(d: dict) -> ProjectConfig:
         insurance_eur_yr=_f(d, "Seguro no 1.º ano (EUR/ano)", 0.0),
         insurance_change_yr=_f(d, "Variação anual do seguro (% do valor inicial)", 0.0) / 100,
         pv_tilt=_f(d, "Inclinação (°)", 10.0), pv_azimuth=_f(d, "Azimute (°, 180 = sul)", 180.0),
+        pv_mounting=d.get("Montagem PV") if d.get("Montagem PV") in MOUNTINGS else MOUNTING_DEFAULT,
         pv_loss_pct=_f(d, "Perdas do sistema (%)", 14.0), pv_dc_ac_ratio=_f(d, "Rácio DC/AC do inversor", 1.2),
         pv_degradation_yr=_f(d, "Degradação anual (%)", 0.5) / 100,
         pv_capex_eur_kwp=_f(d, "Capex PV (EUR/kWp)", 900.0), pv_opex_eur_kwp_yr=_f(d, "Opex PV (EUR/kWp/ano)", 0.0),

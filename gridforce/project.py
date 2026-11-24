@@ -15,7 +15,7 @@ import pandas as pd
 
 from .data.load import shopping_centre
 from .data.omie import day_ahead_prices
-from .data.pvgis import map_to_index, pv_profile_per_kwp
+from .data.pvgis import MOUNTINGS, map_to_index, pv_profile_per_kwp
 from .dispatch import Battery, Markets, Site, simulate_year
 from .finance import financing, annual_energy, annual_streams, investment_case
 from .tariffs import TAR_2026, contracted_power_cost, import_adder_eur_mwh
@@ -55,6 +55,7 @@ class ProjectConfig:
     # PV
     pv_tilt: float = 10.0
     pv_azimuth: float = 180.0
+    pv_mounting: str = "Fixo"           # ver data.pvgis.MOUNTINGS
     pv_loss_pct: float = 14.0
     pv_dc_ac_ratio: float = 1.2
     pv_degradation_yr: float = 0.005
@@ -157,7 +158,8 @@ def _inputs(cfg: ProjectConfig):
     da = day_ahead_prices(cfg.prices_start, cfg.prices_end, cache_dir=CACHE)
     idx = da.index
     pv1 = map_to_index(pv_profile_per_kwp(cfg.lat, cfg.lon, cfg.pv_tilt, cfg.pv_azimuth,
-                                          loss_pct=cfg.pv_loss_pct, cache_dir=CACHE), idx)
+                                          loss_pct=cfg.pv_loss_pct, tracking=MOUNTINGS.get(cfg.pv_mounting, 0),
+                                          cache_dir=CACHE), idx)
     if cfg.load_kw is not None:
         load = np.resize(np.asarray(cfg.load_kw, dtype=float), len(idx))
     elif cfg.annual_load_mwh <= 0:  # parque sem consumo (só produção e armazenamento)

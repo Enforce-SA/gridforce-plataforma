@@ -9,26 +9,40 @@ import requests
 
 URL = "https://re.jrc.ec.europa.eu/api/v5_2/seriescalc"
 
+# Tipos de montagem (rótulo guardado no projeto -> trackingtype do PVGIS)
+MOUNTINGS = {
+    "Fixo": 0,
+    "Seguidor de 1 eixo horizontal (eixo N-S, roda E-O)": 1,
+    "Seguidor de 1 eixo inclinado (eixo N-S)": 5,
+    "Seguidor de 2 eixos": 2,
+}
+MOUNTING_DEFAULT = "Fixo"
+
 
 def pv_profile_per_kwp(lat: float, lon: float, tilt: float, azimuth_deg_north: float,
-                       year: int = 2020, loss_pct: float = 14.0,
+                       year: int = 2020, loss_pct: float = 14.0, tracking: int = 0,
                        cache_dir: Path | str | None = None) -> pd.Series:
     """Produção horária de 1 kWp (kW), interpolada para 15 min.
 
     azimuth_deg_north: convenção da GridCog (180 = sul). O PVGIS usa 0 = sul.
+    tracking: trackingtype do PVGIS (0 fixo, 1 eixo horizontal N-S, 2 dois eixos,
+    5 eixo inclinado N-S, em que a inclinação do eixo é tilt). Nos seguidores o
+    azimute não conta e, no de eixo horizontal e no de 2 eixos, a inclinação também não.
     O índice devolvido é um ano genérico em hora UTC; usa-se o perfil por
     posição (dia do ano, hora) para o aplicar a qualquer ano de simulação.
     """
     aspect = azimuth_deg_north - 180.0
     cache = None
     if cache_dir:
-        cache = Path(cache_dir) / f"pvgis_{lat}_{lon}_{tilt}_{aspect}_{year}_{loss_pct}.csv"
+        trk = f"_t{tracking}" if tracking else ""   # fixo mantém o nome antigo da cache
+        cache = Path(cache_dir) / f"pvgis_{lat}_{lon}_{tilt}_{aspect}_{year}_{loss_pct}{trk}.csv"
         if cache.exists():
             s = pd.read_csv(cache, index_col=0).iloc[:, 0]
             s.index = pd.to_datetime(s.index, utc=True)
             return s
     params = dict(lat=lat, lon=lon, angle=tilt, aspect=aspect, startyear=year, endyear=year,
-                  pvcalculation=1, peakpower=1, loss=loss_pct, outputformat="json")
+                  pvcalculation=1, peakpower=1, loss=loss_pct, trackingtype=int(tracking),
+                  outputformat="json")
     r = requests.get(URL, params=params, timeout=120)
     r.raise_for_status()
     hourly = r.json()["outputs"]["hourly"]

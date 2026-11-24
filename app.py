@@ -31,6 +31,7 @@ for _name in ["gridforce.data.pvgis", "gridforce.data.omie", "gridforce.data.ent
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
 from gridforce.data.pvgis import MOUNTING_DEFAULT, MOUNTINGS
+from gridforce.data.load import normalize_load, parse_load_csv
 from gridforce.presets import CAPEX_MODES, capex_mode, config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
 from gridforce.project import compare as compare_variants
 from gridforce import sensitivity as sens
@@ -375,14 +376,19 @@ with tab_site:
             f = st.file_uploader(T("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)"),
                                  type=["csv"])
             if f is None and PRESET.get("Diagrama de carga (kW)"):
-                load_kw = np.asarray(PRESET["Diagrama de carga (kW)"], dtype=float)
+                _notes = []
+                load_kw = normalize_load(PRESET["Diagrama de carga (kW)"], _notes)
                 st.info(T("A usar o diagrama de carga guardado no projeto ({x} MWh/ano).").format(x=f"{load_kw.sum() * 0.25 / 1000:,.1f}"))
+                for _n in _notes:
+                    st.warning(T(_n))
             if f is not None:
-                raw = pd.read_csv(f, sep=None, engine="python")
-                col = raw.select_dtypes("number").columns[-1]
-                vals = raw[col].to_numpy(float)
-                if len(vals) in (8760, 8784):
-                    vals = np.repeat(vals, 4)
+                try:
+                    vals, _notes = parse_load_csv(f.getvalue())
+                except ValueError as e:
+                    st.error(T(str(e)))
+                    st.stop()
+                for _n in _notes:
+                    st.warning(T(_n))
                 load_kw = vals
                 st.success(T("{n} intervalos, {e} MWh/ano, ponta {p} kW").format(n=f"{len(vals):,}", e=f"{vals.sum() * 0.25 / 1000:,.1f}", p=f"{vals.max():,.0f}"))
     c3, c4 = st.columns(2)

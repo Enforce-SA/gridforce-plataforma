@@ -6,6 +6,11 @@ As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 ## 0.12.0 (2026-11-24)
 - Bateria definida por potência (kW) e duração (h): a capacidade de armazenamento (kWh/MWh) passa a ser calculada como potência x horas. Os campos estão no separador 2 (lado da bateria) e na tabela de variantes do separador 4, sempre sincronizados. Projetos já gravados mantêm a mesma capacidade e os mesmos resultados (a duração é deduzida de kWh / kW).
 
+## 0.11.3 (2026-11-24)
+- Diagrama de carga (CSV): leitura corrigida para ficheiros com ponto e vírgula e vírgula decimal (formato português do Excel). Antes, nesses ficheiros, só a parte decimal era lida e as horas com valor inteiro ficavam vazias.
+- Aceita cabeçalho ou não, colunas de data/hora antes do valor, dados horários, de 30 min ou de 15 min, e os dias de mudança de hora (8 759 ou 8 761 horas).
+- Intervalos vazios passam a ser preenchidos por interpolação, com um aviso a dizer quantos eram, em vez de impedirem a simulação.
+
 ## 0.11.2 (2026-11-24)
 - Relatório Word: deixa de haver páginas em branco entre secções (quando uma tabela enchia a página, o espaço a seguir passava sozinho para a página seguinte), e as notas por baixo das tabelas e gráficos ficam na mesma página que eles.
 

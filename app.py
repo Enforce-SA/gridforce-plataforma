@@ -16,20 +16,18 @@ import streamlit as st
 
 import importlib
 
-import gridforce.dispatch
-import gridforce.finance
-import gridforce.project
-import gridforce.presets
-import gridforce.sensitivity
-import gridforce.library
-import gridforce.i18n
-import gridforce.version
+import sys as _sys
 
 # Recarregar o motor a cada execução: depois de uma atualização no GitHub o Streamlit Cloud
-# pode manter a versão antiga dos módulos em memória.
-for _m in (gridforce.dispatch, gridforce.finance, gridforce.project, gridforce.presets,
-           gridforce.version, gridforce.sensitivity, gridforce.library, gridforce.i18n):
-    importlib.reload(_m)
+# pode manter a versão antiga dos módulos em memória. A ordem conta: primeiro os módulos de que
+# os outros dependem (dados, tarifas), depois os que os importam.
+for _name in ["gridforce.data.pvgis", "gridforce.data.omie", "gridforce.data.entsoe", "gridforce.data.load",
+              "gridforce.tariffs", "gridforce.i18n", "gridforce.version", "gridforce.finance", "gridforce.dispatch",
+              "gridforce.project", "gridforce.presets", "gridforce.sensitivity", "gridforce.library", "gridforce.report"]:
+    if _name in _sys.modules:
+        importlib.reload(_sys.modules[_name])
+    else:
+        importlib.import_module(_name)
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
 from gridforce.data.pvgis import MOUNTING_DEFAULT, MOUNTINGS

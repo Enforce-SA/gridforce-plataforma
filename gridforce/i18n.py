@@ -90,6 +90,7 @@ def translate_xlsx(data: bytes) -> bytes:
 # para os projetos antigos continuarem a abrir)
 PT = {
     "Perfil tipo de centro comercial": "Perfil tipo C&I",
+    "Carregar diagrama de carga (CSV)": "Carregar diagrama de carga (Excel ou CSV)",
 }
 
 EN = {
@@ -134,9 +135,38 @@ EN = {
     # separador 1
     "Nome do projeto": "Project name", "Latitude": "Latitude", "Longitude": "Longitude",
     "Consumo do local": "Site load", "Perfil tipo de centro comercial": "Typical C&I profile",
-    "Carregar diagrama de carga (CSV)": "Upload load profile (CSV)",
+    "Carregar diagrama de carga (CSV)": "Upload load profile (Excel or CSV)",
     "Sem consumo (parque de produção e armazenamento)": "No load (generation and storage park)",
     "Consumo anual (MWh)": "Annual consumption (MWh)",
+    # modelo do diagrama de carga
+    "Para evitar erros de formato, descarregue o modelo Excel, preencha a coluna amarela e carregue-o aqui. Também aceita CSV.":
+        "To avoid format errors, download the Excel template, fill in the yellow column and upload it here. CSV is also accepted.",
+    "Modelo horário (8 760 h)": "Hourly template (8,760 h)",
+    "Modelo quarto-horário (35 040 x 15 min)": "Quarter-hourly template (35,040 x 15 min)",
+    "GridForce_modelo_consumo_horario": "GridForce_load_template_hourly",
+    "GridForce_modelo_consumo_15min": "GridForce_load_template_15min",
+    "Excel (modelo) ou CSV com uma coluna de potência em kW (8 760 horas ou 35 040 quartos de hora)":
+        "Excel (template) or CSV with one power column in kW (8,760 hours or 35,040 quarter-hours)",
+    "hora": "hour", "quarto de hora": "quarter-hour", "Instruções": "Instructions",
+    "Data": "Date", "Intervalo": "Interval", "Potência média (kW)": "Average power (kW)",
+    "Escreva um número igual ou superior a 0 (potência média em kW).": "Enter a number of 0 or more (average power in kW).",
+    "Consumo anual resultante (MWh):": "Resulting annual consumption (MWh):",
+    "GridForce: modelo de diagrama de carga": "GridForce: load profile template",
+    "1. Na folha Consumo, preencha só a coluna amarela, uma linha por {per} ({n} linhas, de 1 de janeiro a 31 de dezembro). A data e o intervalo já estão escritos: não apague nem acrescente linhas.":
+        "1. In the Consumption sheet, fill in only the yellow column, one row per {per} ({n} rows, 1 January to 31 December). Date and interval are already filled in: do not delete or add rows.",
+    "2. O valor é a potência média consumida no intervalo, em kW. Num ficheiro horário é igual aos kWh dessa hora. Num ficheiro de 15 min é igual aos kWh do quarto de hora x 4.":
+        "2. The value is the average power consumed in the interval, in kW. In an hourly file it equals the kWh of that hour. In a 15-min file it equals the kWh of the quarter-hour x 4.",
+    "3. Pode colar os valores a partir de outro Excel (Colar especial > Valores). Vírgula ou ponto decimal são indiferentes. Não use valores negativos.":
+        "3. You can paste values from another workbook (Paste special > Values). Decimal comma or point both work. Do not use negative values.",
+    "4. O ano do modelo é só indicativo: os valores são aplicados a todos os anos da simulação. A mudança de hora pode ser ignorada.":
+        "4. The template year is only indicative: the values are applied to every simulation year. Daylight saving changes can be ignored.",
+    "5. Grave como .xlsx e carregue o ficheiro no separador 1 da GridForce (Carregar diagrama de carga). A aplicação confirma o número de intervalos, o consumo anual e a ponta, e avisa se houver valores vazios ou negativos.":
+        "5. Save as .xlsx and upload the file in GridForce tab 1 (Upload load profile). The app confirms the number of intervals, annual consumption and peak, and warns about empty or negative values.",
+    "O ficheiro está vazio.": "The file is empty.",
+    "Não encontrei nenhuma coluna com números no ficheiro. Se usou o modelo, confirme que preencheu a coluna de consumo.":
+        "No numeric column found in the file. If you used the template, check that the consumption column is filled in.",
+    "Não consegui abrir o ficheiro Excel. Confirme que é um .xlsx sem palavra-passe.":
+        "Could not open the Excel file. Check that it is an .xlsx without a password.",
     "CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)":
         "CSV with one power column in kW (35,040 rows of 15 min or 8,760 hourly)",
     "A usar o diagrama de carga guardado no projeto ({x} MWh/ano).": "Using the load profile saved in the project ({x} MWh/year).",

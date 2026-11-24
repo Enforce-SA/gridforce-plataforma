@@ -24,7 +24,7 @@ To start a new project, click **➕ New project** (above the tabs). The project'
 
 ## 2. Fill in the tabs
 
-**1. Site and load.** Name, scenario (optional, e.g. Investment Grade), latitude and longitude (PV production comes from PVGIS for those coordinates). Under **Site load**, choose a C&I typical profile with the annual consumption, upload a load profile CSV (one column in kW, 15-minute or hourly), or choose "No load" for generation and storage parks. Enter the import and export limits, if any.
+**1. Site and load.** Name, scenario (optional, e.g. Investment Grade), latitude and longitude (PV production comes from PVGIS for those coordinates). Under **Site load**, choose a C&I typical profile with the annual consumption, upload a load profile (preferably the Excel template you can download right there, hourly or 15-minute; a CSV with one kW column also works), or choose "No load" for generation and storage parks. Enter the import and export limits, if any.
 
 **2. PV and battery.** Tilt, azimuth (180 = south), losses, DC/AC ratio, degradation and unit costs for PV. For the battery: efficiency, SOC window, capacity fade, wear cost, cycle limit per day and costs. The "More battery parameters" and "Degradation, end of life and replacements" sections hold advanced options (cycle-based degradation, capacity augmentation, PCS replacement).
 

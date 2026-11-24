@@ -31,7 +31,7 @@ for _name in ["gridforce.data.pvgis", "gridforce.data.omie", "gridforce.data.ent
 from gridforce.project import ProjectConfig, Variant, run_project, to_excel
 from gridforce.report import to_docx
 from gridforce.data.pvgis import MOUNTING_DEFAULT, MOUNTINGS
-from gridforce.data.load import normalize_load, parse_load_csv
+from gridforce.data.load import load_template_xlsx, normalize_load, parse_load_file
 from gridforce.presets import CAPEX_MODES, capex_mode, config_from_dict, portfolio_excel, portfolio_table, scenario_comparison
 from gridforce.project import compare as compare_variants
 from gridforce import sensitivity as sens
@@ -142,6 +142,35 @@ DEFAULT_VARIANTS = pd.DataFrame([
     {"Variante": "PV 2 MW + 2 MWh", "PV (kWp)": 2000, "BESS (kWh)": 2000, "BESS (kW)": 1000, "Capex total (EUR)": None},
     {"Variante": "Só PV 1 MW", "PV (kWp)": 1000, "BESS (kWh)": 0, "BESS (kW)": 0, "Capex total (EUR)": None},
 ]).astype({"Capex total (EUR)": float})
+
+@st.cache_data(show_spinner=False)
+def _load_template(step_min: int, lang: str) -> bytes:
+    """Modelo Excel do diagrama de carga (horário ou de 15 min), na língua escolhida."""
+    per = T("hora") if step_min == 60 else T("quarto de hora")
+    n = 8760 if step_min == 60 else 35040
+    lab = {
+        "sheet": "Consumption" if lang == "en" else "Consumo", "sheet_help": T("Instruções"), "date": T("Data"), "hour": T("Intervalo"),
+        "value": T("Potência média (kW)"),
+        "dv_error": T("Escreva um número igual ou superior a 0 (potência média em kW)."),
+        "total": T("Consumo anual resultante (MWh):"),
+        "help_title": T("GridForce: modelo de diagrama de carga"),
+        "help": [
+            T("1. Na folha Consumo, preencha só a coluna amarela, uma linha por {per} ({n} linhas, de 1 de janeiro "
+              "a 31 de dezembro). A data e o intervalo já estão escritos: não apague nem acrescente linhas.").format(
+                per=per, n=f"{n:,}".replace(",", " ")),
+            T("2. O valor é a potência média consumida no intervalo, em kW. Num ficheiro horário é igual aos kWh "
+              "dessa hora. Num ficheiro de 15 min é igual aos kWh do quarto de hora x 4."),
+            T("3. Pode colar os valores a partir de outro Excel (Colar especial > Valores). Vírgula ou ponto decimal "
+              "são indiferentes. Não use valores negativos."),
+            T("4. O ano do modelo é só indicativo: os valores são aplicados a todos os anos da simulação. A mudança "
+              "de hora pode ser ignorada."),
+            T("5. Grave como .xlsx e carregue o ficheiro no separador 1 da GridForce (Carregar diagrama de carga). "
+              "A aplicação confirma o número de intervalos, o consumo anual e a ponta, e avisa se houver valores "
+              "vazios ou negativos."),
+        ],
+    }
+    return load_template_xlsx(lab, step_min)
+
 
 LOAD_MODES = ["Perfil tipo de centro comercial", "Carregar diagrama de carga (CSV)",
               "Sem consumo (parque de produção e armazenamento)"]
@@ -373,8 +402,21 @@ with tab_site:
         if load_mode.startswith("Sem consumo"):
             annual = 0.0
         elif load_mode != "Perfil tipo de centro comercial":
-            f = st.file_uploader(T("CSV com uma coluna de potência em kW (35 040 linhas de 15 min ou 8 760 horárias)"),
-                                 type=["csv"])
+            st.caption(T("Para evitar erros de formato, descarregue o modelo Excel, preencha a coluna amarela e "
+                         "carregue-o aqui. Também aceita CSV."))
+            _d1, _d2 = st.columns(2)
+            with _d1:
+                st.download_button(T("Modelo horário (8 760 h)"), _load_template(60, _lang),
+                                   file_name=T("GridForce_modelo_consumo_horario") + ".xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   use_container_width=True)
+            with _d2:
+                st.download_button(T("Modelo quarto-horário (35 040 x 15 min)"), _load_template(15, _lang),
+                                   file_name=T("GridForce_modelo_consumo_15min") + ".xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   use_container_width=True)
+            f = st.file_uploader(T("Excel (modelo) ou CSV com uma coluna de potência em kW (8 760 horas ou 35 040 "
+                                   "quartos de hora)"), type=["xlsx", "csv"])
             if f is None and PRESET.get("Diagrama de carga (kW)"):
                 _notes = []
                 load_kw = normalize_load(PRESET["Diagrama de carga (kW)"], _notes)
@@ -383,7 +425,7 @@ with tab_site:
                     st.warning(T(_n))
             if f is not None:
                 try:
-                    vals, _notes = parse_load_csv(f.getvalue())
+                    vals, _notes = parse_load_file(f.name, f.getvalue())
                 except ValueError as e:
                     st.error(T(str(e)))
                     st.stop()

@@ -24,7 +24,7 @@ Para começar um projeto novo, carrega em **➕ Novo projeto** (por cima dos sep
 
 ## 2. Preencher os separadores
 
-**1. Local e consumo.** Nome, cenário (opcional, ex.: Investment Grade), latitude e longitude (a produção PV vem do PVGIS para essas coordenadas). Em **Consumo do local** escolhe um perfil tipo C&I com o consumo anual, carrega um diagrama de carga em CSV (uma coluna em kW, 15 minutos ou horária) ou escolhe "Sem consumo" para parques só de produção e armazenamento. Indica os limites de importação e de injeção na rede, se existirem.
+**1. Local e consumo.** Nome, cenário (opcional, ex.: Investment Grade), latitude e longitude (a produção PV vem do PVGIS para essas coordenadas). Em **Consumo do local** escolhe um perfil tipo C&I com o consumo anual, carrega um diagrama de carga (de preferência no modelo Excel que se descarrega ali mesmo, horário ou de 15 minutos; também aceita CSV com uma coluna em kW) ou escolhe "Sem consumo" para parques só de produção e armazenamento. Indica os limites de importação e de injeção na rede, se existirem.
 
 **2. PV e bateria.** Inclinação, azimute (180 = sul), perdas, rácio DC/AC, degradação e custos unitários do PV. Para a bateria: eficiência, janela de SOC, perda de capacidade, custo de desgaste, limite de ciclos por dia e custos. Os blocos "Mais parâmetros da bateria" e "Degradação, fim de vida e substituições" têm opções avançadas (degradação por ciclos, reposição de capacidade, substituição do PCS).
 

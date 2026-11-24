@@ -22,6 +22,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT  # noqa: E402
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK  # noqa: E402
 from docx.oxml import OxmlElement  # noqa: E402
 from docx.oxml.ns import qn  # noqa: E402
+from docx.text.paragraph import Paragraph  # noqa: E402
 from docx.shared import Cm, Pt, RGBColor  # noqa: E402
 
 from . import i18n  # noqa: E402
@@ -140,6 +141,9 @@ def kv_table(doc, pairs: list[tuple[str, str]], widths=(9.0, 7.0)) -> None:
 
 def heading(doc, text: str, level: int = 1) -> None:
     h = doc.add_heading(text, level=level)
+    if getattr(doc, "_gf_new_page", False):   # ver _page_break
+        h.paragraph_format.page_break_before = True
+        doc._gf_new_page = False
     for r in h.runs:
         r.font.color.rgb = DARK
 
@@ -153,8 +157,32 @@ def para(doc, text: str, italic: bool = False, size: int = 10, color=None) -> No
         r.font.color.rgb = color
 
 
+def _last(doc):
+    body = doc.element.body
+    i = len(body) - 2 if len(body) > 1 and body[-1].tag.endswith("sectPr") else len(body) - 1
+    return body, i
+
+
 def caption(doc, text: str) -> None:
+    """Legenda, sempre na mesma página que a tabela ou a figura que a precede (senão pode ficar sozinha
+    numa página quase em branco)."""
+    body, i = _last(doc)
+    spacer = False
+    if i >= 1 and body[i].tag.endswith("}p") and not "".join(body[i].itertext()).strip() \
+            and body[i].find(".//" + qn("w:drawing")) is None and body[i - 1].tag.endswith("}tbl"):
+        body.remove(body[i])          # espaçamento da tabela passa para depois da legenda
+        spacer, i = True, i - 1
+    prev = body[i] if i >= 0 else None
+    if prev is not None and prev.tag.endswith("}tbl"):
+        rows = prev.findall(qn("w:tr"))[-2:]
+        for tr in rows:
+            for p_el in tr.iter(qn("w:p")):
+                Paragraph(p_el, None).paragraph_format.keep_with_next = True
+    elif prev is not None and prev.tag.endswith("}p"):
+        Paragraph(prev, None).paragraph_format.keep_with_next = True
     para(doc, text, italic=True, size=8, color=MUTED)
+    if spacer:
+        doc.add_paragraph()
 
 
 def figure(doc, fig, width_cm: float = 16.0) -> None:
@@ -167,7 +195,14 @@ def figure(doc, fig, width_cm: float = 16.0) -> None:
 
 
 def _page_break(doc) -> None:
-    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+    """O título seguinte começa numa página nova. Não se usa um parágrafo vazio com quebra de página:
+    quando a página anterior fica cheia, esse parágrafo passa para a página seguinte e o Word mostra uma
+    página em branco. Pela mesma razão tira-se o parágrafo vazio de espaçamento que fica depois de uma tabela."""
+    body = doc.element.body
+    last = body[-2] if len(body) > 1 and body[-1].tag.endswith("sectPr") else body[-1]
+    if last.tag.endswith("}p") and not "".join(last.itertext()).strip() and last.find(".//" + qn("w:drawing")) is None:
+        body.remove(last)
+    doc._gf_new_page = True
 
 
 def _thousands(ax, axis="y") -> None:

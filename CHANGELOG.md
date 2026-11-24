@@ -3,6 +3,9 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.11.2 (2026-11-24)
+- Relatório Word: deixa de haver páginas em branco entre secções (quando uma tabela enchia a página, o espaço a seguir passava sozinho para a página seguinte), e as notas por baixo das tabelas e gráficos ficam na mesma página que eles.
+
 ## 0.11.1 (2026-11-24)
 - Correção: depois da atualização para a 0.11.0 a aplicação podia não arrancar (erro ao importar o PVGIS). A aplicação passa a recarregar os módulos pela ordem certa.
 

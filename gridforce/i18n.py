@@ -131,6 +131,7 @@ EN = {
     "1. Local e consumo": "1. Site and load", "2. PV e bateria": "2. PV and battery",
     "3. Mercados, tarifas e finanças": "3. Markets, tariffs and finance", "4. Variantes": "4. Variants",
     "5. Resultados": "5. Results",
+    "Passos do projeto": "Project steps",
     # separador 1
     "Nome do projeto": "Project name", "Latitude": "Latitude", "Longitude": "Longitude",
     "Consumo do local": "Site load", "Perfil tipo de centro comercial": "Typical C&I profile",

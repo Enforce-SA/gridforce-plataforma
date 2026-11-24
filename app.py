@@ -352,6 +352,41 @@ def _keyed(fn):
 for _w in _WIDGETS:
     setattr(st, _w, _keyed(_ORIG[_w]))
 
+# Menu de passos numa coluna à esquerda (os 5 separadores continuam a ser st.tabs, por isso todos os campos
+# mantêm os valores ao mudar de passo; só a apresentação muda). Em ecrãs estreitos volta a ficar em cima.
+st.markdown(f"""
+<style>
+  @media (min-width: 900px) {{
+    .stTabs > div[data-orientation] {{ display: grid; grid-template-columns: 250px minmax(0, 1fr);
+        column-gap: 28px; align-items: start; }}
+    .stTabs > div[data-orientation] > [role="tablist"] {{ grid-column: 1; grid-row: 1 / span 10;
+        position: sticky; top: 4.5rem; flex-direction: column; align-items: stretch; gap: 8px;
+        overflow: visible; padding: 14px 12px; border-radius: 12px;
+        background: rgba(174, 192, 0, 0.06); border: 1px solid rgba(174, 192, 0, 0.35); }}
+    .stTabs > div[data-orientation] > [role="tablist"]::before {{ content: "{T('Passos do projeto')}";
+        font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+        opacity: .7; padding: 0 6px 4px 6px; }}
+    .stTabs > div[data-orientation] > [role="tabpanel"] {{ grid-column: 2; min-width: 0; }}
+    .stTabs [role="tablist"] > [role="tab"] {{ width: 100%; justify-content: flex-start; text-align: left;
+        white-space: normal; height: auto; min-height: 46px; padding: 10px 14px; margin: 0;
+        border-radius: 9px; border: 1px solid rgba(128, 128, 128, 0.30); border-left: 5px solid rgba(128, 128, 128, 0.45);
+        background: rgba(128, 128, 128, 0.08); transition: background .15s, border-color .15s; }}
+    .stTabs [role="tablist"] > [role="tab"] p {{ font-size: 1rem; font-weight: 600; }}
+    .stTabs [role="tablist"] > [role="tab"]:hover {{ border-color: {BRAND['primary']}; background: rgba(174, 192, 0, 0.14); }}
+    .stTabs [role="tablist"] > [role="tab"][aria-selected="true"] {{ background: {BRAND['primary']};
+        border-color: {BRAND['primary']}; border-left-color: {BRAND['dark']}; }}
+    .stTabs [role="tablist"] > [role="tab"][aria-selected="true"] p {{ color: #000 !important; font-weight: 800; }}
+    .stTabs [role="tablist"] .react-aria-SelectionIndicator {{ display: none; }}
+  }}
+  @media (max-width: 899px) {{
+    .stTabs [role="tablist"] {{ flex-wrap: wrap; gap: 6px; }}
+    .stTabs [role="tablist"] > [role="tab"] {{ border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 8px; padding: 6px 10px; }}
+    .stTabs [role="tablist"] > [role="tab"][aria-selected="true"] {{ background: {BRAND['primary']}; }}
+    .stTabs [role="tablist"] > [role="tab"][aria-selected="true"] p {{ color: #000 !important; }}
+  }}
+</style>
+""", unsafe_allow_html=True)
+
 tab_site, tab_tech, tab_mkt, tab_var, tab_res = st.tabs(
     [T(x) for x in ["1. Local e consumo", "2. PV e bateria", "3. Mercados, tarifas e finanças", "4. Variantes", "5. Resultados"]])
 

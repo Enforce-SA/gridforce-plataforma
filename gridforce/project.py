@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .data.load import shopping_centre
+from .data.load import normalize_load, shopping_centre
 from .data.omie import day_ahead_prices
 from .data.pvgis import MOUNTINGS, map_to_index, pv_profile_per_kwp
 from .dispatch import Battery, Markets, Site, simulate_year
@@ -161,7 +161,7 @@ def _inputs(cfg: ProjectConfig):
                                           loss_pct=cfg.pv_loss_pct, tracking=MOUNTINGS.get(cfg.pv_mounting, 0),
                                           cache_dir=CACHE), idx)
     if cfg.load_kw is not None:
-        load = np.resize(np.asarray(cfg.load_kw, dtype=float), len(idx))
+        load = np.resize(normalize_load(cfg.load_kw), len(idx))
     elif cfg.annual_load_mwh <= 0:  # parque sem consumo (só produção e armazenamento)
         load = np.zeros(len(idx))
     else:

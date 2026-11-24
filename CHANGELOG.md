@@ -3,6 +3,11 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.11.3 (2026-11-24)
+- Diagrama de carga (CSV): leitura corrigida para ficheiros com ponto e vírgula e vírgula decimal (formato português do Excel). Antes, nesses ficheiros, só a parte decimal era lida e as horas com valor inteiro ficavam vazias.
+- Aceita cabeçalho ou não, colunas de data/hora antes do valor, dados horários, de 30 min ou de 15 min, e os dias de mudança de hora (8 759 ou 8 761 horas).
+- Intervalos vazios passam a ser preenchidos por interpolação, com um aviso a dizer quantos eram, em vez de impedirem a simulação.
+
 ## 0.11.2 (2026-11-24)
 - Relatório Word: deixa de haver páginas em branco entre secções (quando uma tabela enchia a página, o espaço a seguir passava sozinho para a página seguinte), e as notas por baixo das tabelas e gráficos ficam na mesma página que eles.
 

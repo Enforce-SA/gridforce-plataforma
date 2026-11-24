@@ -3,6 +3,11 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.13.0 (2026-11-24)
+- Modelo Excel do diagrama de carga para descarregar no passo 1 (ao escolher "Carregar diagrama de carga"): um horário (8 760 horas) e um quarto-horário (35 040 intervalos de 15 min), com data e hora já preenchidas, coluna amarela para a potência média em kW, validação contra valores negativos e uma folha de instruções com o consumo anual resultante. Também em inglês.
+- O carregamento passa a aceitar o Excel (.xlsx) diretamente, além do CSV, sem problemas de separadores ou de vírgula decimal.
+- Mensagens claras ao carregar: modelo por preencher, linhas finais em falta, valores vazios (preenchidos por interpolação) e valores negativos.
+
 ## 0.12.1 (2026-11-24)
 - Menu de navegação destacado: os 5 passos (Local e consumo, PV e bateria, Mercados, Variantes, Resultados) passam a estar numa coluna à esquerda, sempre visível ao descer a página, com o passo atual a verde. Os valores preenchidos mantêm-se ao mudar de passo. Em ecrãs estreitos (telemóvel) o menu fica em cima, em botões.
 

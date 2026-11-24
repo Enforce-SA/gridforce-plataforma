@@ -3,7 +3,7 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
-## Em teste em Qualidade
+## 0.11.0 (2026-11-24)
 - Montagem PV: fixo ou com seguidor (1 eixo horizontal N-S a rodar E-O, 1 eixo inclinado, 2 eixos). O perfil de produção vem do PVGIS para o tipo escolhido. Projetos já gravados continuam como fixo.
 
 ## 0.10.0 (2026-11-23)

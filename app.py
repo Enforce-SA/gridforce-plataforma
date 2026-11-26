@@ -67,13 +67,35 @@ st.markdown(f"""
 # Uma cor diferente para cada fonte de valor (famílias: mercado verde, PPA amarelo, aFRR azuis, mFRR roxos, tarifas cinzentos)
 STREAM_COLORS = {
     "Mercado diário - venda (export)": "#5C8831", "Mercado diário - compra (import)": "#2B4D22",
-    "Mercado intradiário - venda (export)": "#8FD14F", "Mercado intradiário - compra (import)": "#3E6B2A",
+    "Mercado intradiário - venda (export)": "#AEC000", "Mercado intradiário - compra (import)": "#E3EC8A",
     "Venda PV a preço fixo (PPA)": "#F2C14E",
     "aFRR subir - capacidade": "#2E86AB", "aFRR descer - capacidade": "#7FC8F8",
     "aFRR subir - ativação": "#1B4F72", "aFRR descer - ativação": "#A9D6E5",
     "mFRR subir - ativação": "#8E6CCF", "mFRR descer - ativação": "#D4B8F0",
     "Tarifas de acesso - energia e potência em ponta": "#9AA79A", "Tarifas de acesso - potência contratada": "#E07A5F",
 }
+
+
+def _legend_below(fig, height=420, width_guess=560, top=30):
+    """Legenda por baixo do gráfico, com espaço reservado conforme o número de entradas.
+
+    Nunca se sobrepõe às barras ou linhas: a área do gráfico mantém a altura pedida e a figura
+    cresce o necessário para caber a legenda (estimada para uma coluna estreita, como no telemóvel).
+    """
+    names = list(dict.fromkeys(t.name for t in fig.data if t.name and t.showlegend is not False))
+    if not names:
+        return fig
+    col_w = 44 + 7 * max(len(str(n)) for n in names)
+    cols = max(1, int(width_guess // col_w))
+    rows = -(-len(names) // cols)
+    axis_h = 66 if fig.layout.xaxis.title.text else 56
+    bottom = axis_h + rows * 21 + 12
+    plot_h = height - top
+    fig.update_layout(height=height + bottom, margin=dict(t=top, b=bottom),
+                      legend=dict(orientation="h", yref="paper", y=-axis_h / plot_h, yanchor="top",
+                                  x=0, xanchor="left", title=dict(text="")))
+    fig.update_traces(marker_line_width=0, selector=dict(type="bar"))
+    return fig
 
 
 def _style(fig):
@@ -973,7 +995,7 @@ with tab_res:
                         rows.append({T("Variante"): r.variant.name, T("Fonte de valor"): T(k), "EUR": delta})
             fig = px.bar(pd.DataFrame(rows), x=T("Variante"), y="EUR", color=T("Fonte de valor"), barmode="relative",
                          color_discrete_map={T(k): c for k, c in STREAM_COLORS.items()})
-            fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"), height=520, margin=dict(t=110))
+            _legend_below(fig, height=440)
             st.plotly_chart(_style(fig), width="stretch")
             if res.config.ppa_price_eur_mwh is not None:
                 st.caption(T("Com PPA, todo o PV injetado diretamente na rede é vendido ao preço fixo. \"Mercado diário - "
@@ -987,7 +1009,8 @@ with tab_res:
                 disc_cf = cf / (1 + res.config.discount_rate) ** np.arange(len(cf))
                 fig.add_trace(go.Scatter(x=cf.index, y=disc_cf.cumsum(), mode="lines", name=r.variant.name))
             fig.add_hline(y=0, line_dash="dot")
-            fig.update_layout(height=520, margin=dict(t=110), yaxis_title="EUR", legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            fig.update_layout(yaxis_title="EUR")
+            _legend_below(fig, height=440)
             st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader(T("Despacho num dia"))
@@ -1010,9 +1033,9 @@ with tab_res:
                 fig.add_trace(go.Scatter(x=d.index, y=d.rup, name=T("Reserva aFRR subir"), line=dict(dash="dot")))
             fig.add_trace(go.Scatter(x=d.index, y=d.da_price, name=T("Preço OMIE (EUR/MWh)"), yaxis="y2",
                                      line=dict(color="#F2C14E")))
-            fig.update_layout(barmode="relative", height=480, margin=dict(t=80), yaxis_title="kW",
-                              yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"),
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            fig.update_layout(barmode="relative", yaxis_title="kW",
+                              yaxis2=dict(overlaying="y", side="right", title="EUR/MWh"))
+            _legend_below(fig, height=420, width_guess=760)
             st.plotly_chart(_style(fig), width="stretch")
 
         st.subheader(T("Contas anuais"))
@@ -1040,9 +1063,9 @@ with tab_res:
                                  name=T("Fator a descer"), marker_color="#E4572E"))
             fig.add_trace(go.Bar(y=[T(f_) for f_ in tor["Fator"]], x=tor["VAL com fator a subir (EUR)"] - b0, base=b0, orientation="h",
                                  name=T("Fator a subir"), marker_color="#2E86AB"))
-            fig.update_layout(barmode="overlay", height=120 + 45 * len(tor), margin=dict(t=60, l=10),
-                              xaxis_title=T("VAL (EUR)"), yaxis=dict(autorange="reversed"),
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            fig.update_layout(barmode="overlay", margin=dict(l=10),
+                              xaxis_title=T("VAL (EUR)"), yaxis=dict(autorange="reversed"))
+            _legend_below(fig, height=90 + 45 * len(tor), width_guess=760)
             fig.add_vline(x=b0, line_dash="dot")
             st.plotly_chart(_style(fig), width="stretch")
             _tor = tor.drop(columns=["Amplitude (EUR)"]).assign(Fator=lambda x: x["Fator"].map(T))
@@ -1136,8 +1159,8 @@ with tab_res:
             fig.add_trace(go.Scatter(x=tb.index, y=tb["Diferença descontada acumulada"], mode="lines",
                                      name=T("Diferença descontada acumulada")))
             fig.add_hline(y=0, line_dash="dot")
-            fig.update_layout(height=380, margin=dict(t=60), yaxis_title="EUR",
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"))
+            fig.update_layout(yaxis_title="EUR")
+            _legend_below(fig, height=340)
             st.plotly_chart(_style(fig), width="stretch")
         with c2:
             st.markdown(T("**Value stack do 1.º ano: A - B**"))

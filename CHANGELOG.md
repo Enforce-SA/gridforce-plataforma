@@ -3,6 +3,10 @@
 Cada versão publicada em Produção tem um número (maior.menor.correção), a data e a descrição das alterações.
 As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
+## 0.13.1 (2026-11-26)
+- Gráficos de resultados: a legenda passa a ficar por baixo do gráfico, com o espaço ajustado ao número de entradas, e deixa de se sobrepor às barras quando há muitas fontes de valor (value stack, cashflow descontado, despacho num dia, sensibilidades e cashflow relativo).
+- Cores do value stack mais distintas: o intradiário passa a verde-lima (venda) e lima claro (compra), para não se confundir com o mercado diário. As caixas da legenda deixam de parecer só contorno (mFRR).
+
 ## 0.13.0 (2026-11-24)
 - Modelo Excel do diagrama de carga para descarregar no passo 1 (ao escolher "Carregar diagrama de carga"): um horário (8 760 horas) e um quarto-horário (35 040 intervalos de 15 min), com data e hora já preenchidas, coluna amarela para a potência média em kW, validação contra valores negativos e uma folha de instruções com o consumo anual resultante. Também em inglês.
 - O carregamento passa a aceitar o Excel (.xlsx) diretamente, além do CSV, sem problemas de separadores ou de vírgula decimal.

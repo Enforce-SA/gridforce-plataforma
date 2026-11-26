@@ -234,8 +234,16 @@ def _monthly_chart(d: pd.DataFrame):
     ax.set_xticks(x, labels)
     ax.set_ylabel("MWh")
     _thousands(ax)
-    ax.legend(ncol=4, loc="upper left", bbox_to_anchor=(0, 1.16))
+    _legend_below(fig, ax, ncol=4)
     return fig
+
+
+def _legend_below(fig, ax, ncol=2):
+    """Legenda por baixo do gráfico (fora da área dos dados), como na aplicação."""
+    h, lab = ax.get_legend_handles_labels()
+    fig.tight_layout()
+    fig.legend(h, lab, ncol=ncol, loc="upper left", frameon=False,
+               bbox_to_anchor=(ax.get_position().x0, 0.0), bbox_transform=fig.transFigure)
 
 
 def _daily_chart(d: pd.DataFrame):
@@ -259,7 +267,7 @@ def _daily_chart(d: pd.DataFrame):
         ax.set_xlabel(T("Hora"))
     axes[0].set_ylabel(T("kW (média)"))
     _thousands(axes[0])
-    axes[0].legend(ncol=2, loc="upper left", bbox_to_anchor=(0, 1.32))
+    _legend_below(fig, axes[0], ncol=2)
     return fig
 
 
@@ -287,7 +295,7 @@ def _cum_chart(res, vname: str):
     ax.axhline(0, color=SUB, lw=0.8, ls=":")
     ax.set_ylabel("EUR")
     _thousands(ax)
-    ax.legend(loc="upper left", ncol=2)
+    _legend_below(fig, ax, ncol=3)
     return fig
 
 
@@ -303,7 +311,7 @@ def _tornado_chart(tor: pd.DataFrame):
     ax.set_xlabel(T("VAL (EUR)"))
     _thousands(ax, "x")
     ax.grid(axis="y", visible=False)
-    ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(0, 1.12 + 0.3 / len(tor)))
+    _legend_below(fig, ax, ncol=2)
     return fig
 
 

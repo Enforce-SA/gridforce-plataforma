@@ -5,6 +5,7 @@ As alterações são primeiro publicadas e testadas no ambiente de Qualidade.
 
 ## 0.13.1 (2026-11-26)
 - Gráficos de resultados: a legenda passa a ficar por baixo do gráfico, com o espaço ajustado ao número de entradas, e deixa de se sobrepor às barras quando há muitas fontes de valor (value stack, cashflow descontado, despacho num dia, sensibilidades e cashflow relativo).
+- Relatório Word: as legendas dos gráficos (energia mensal, perfil diário, cashflow descontado e sensibilidades) também passam para baixo do gráfico. O gráfico da carteira de projetos segue a mesma regra.
 - Cores do value stack mais distintas: o intradiário passa a verde-lima (venda) e lima claro (compra), para não se confundir com o mercado diário. As caixas da legenda deixam de parecer só contorno (mFRR).
 
 ## 0.13.0 (2026-11-24)

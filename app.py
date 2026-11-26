@@ -944,7 +944,7 @@ with tab_res:
             with c2:
                 fig = px.bar(pp, x="Parque", y="VAL (EUR)", color="Cenário", barmode="group",
                              labels={"Parque": T("Parque"), "VAL (EUR)": T("VAL (EUR)"), "Cenário": T("Cenário")})
-                fig.update_layout(height=360, margin=dict(t=30))
+                _legend_below(fig, height=340)
                 st.plotly_chart(_style(fig), width="stretch")
         st.download_button(T("Descarregar carteira (Excel)"), translate_xlsx(pbuf.getvalue()), file_name="GridForce_carteira.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
